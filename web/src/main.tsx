@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './styles.css';
+import { isNativeApp } from './native';
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -9,7 +10,7 @@ createRoot(document.getElementById('root')!).render(
   </React.StrictMode>,
 );
 
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !isNativeApp) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
   });

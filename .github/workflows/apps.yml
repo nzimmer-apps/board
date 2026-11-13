@@ -1,0 +1,96 @@
+name: Build Android + Windows apps
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', 'android/**', 'src-tauri/**', '.github/workflows/apps.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: { group: apps, cancel-in-progress: true }
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Signing key check
+        if: env.HAS_KEY != 'true'
+        run: echo "::warning::ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD secrets not set — skipping the APK so you never install an app signed with a throwaway key."
+      - uses: actions/setup-node@v4
+        if: env.HAS_KEY == 'true'
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - uses: actions/setup-java@v4
+        if: env.HAS_KEY == 'true'
+        with: { distribution: temurin, java-version: 21, cache: gradle }
+      - name: Build web assets and sync into Android
+        if: env.HAS_KEY == 'true'
+        working-directory: web
+        run: |
+          npm ci
+          npm test
+          npm run build
+          npx cap sync android
+      - name: Build signed APK
+        if: env.HAS_KEY == 'true'
+        working-directory: android
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: board
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/board.jks"
+          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/board.jks"
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/Board-android.apk"
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_KEY == 'true'
+        with: { name: android, path: Board-android.apk }
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - name: Build web assets
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          '{"version":"0.2.${{ github.run_number }}"}' | Out-File -Encoding ascii version.json
+          npx --prefix web tauri build --config version.json
+      - name: Collect installers
+        shell: pwsh
+        run: |
+          $b = "src-tauri/target/release/bundle"
+          Copy-Item (Get-ChildItem "$b/nsis/*.exe" | Select-Object -First 1).FullName "Board-windows-setup.exe"
+          Copy-Item (Get-ChildItem "$b/msi/*.msi" | Select-Object -First 1).FullName "Board-windows.msi"
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: 'Board-windows*' }
+
+  release:
+    needs: [android, windows]
+    if: always() && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: out, merge-multiple: true }
+      - run: ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.2.${{ github.run_number }}
+          name: Board 0.2.${{ github.run_number }}
+          make_latest: true
+          body: |
+            **Android:** download `Board-android.apk` on your phone and open it (allow "install unknown apps" for your browser the first time). Later versions install over the top — no need to uninstall.
+            **Windows:** run `Board-windows-setup.exe`. It's unsigned, so SmartScreen may say "Windows protected your PC" → **More info → Run anyway**. Ctrl+Alt+B opens quick-add from anywhere; closing the window keeps it in the tray.
+          files: out/*

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Item } from './supabase';
 import Card, { fmtDue } from './Card';
 
@@ -14,6 +14,12 @@ export default function Board({ items, onAdd, onUpdate, onRemove }: Props) {
   const [q, setQ] = useState('');
   const [tag, setTag] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const f = () => setTimeout(() => inputRef.current?.focus(), 50);
+    window.addEventListener('board-focus-capture', f);
+    return () => window.removeEventListener('board-focus-capture', f);
+  }, []);
 
   const tagCounts = useMemo(() => {
     const m = new Map<string, number>();

@@ -5,6 +5,7 @@ import { parseInput } from './parse';
 import Auth from './Auth';
 import Board from './Board';
 import Calendar from './Calendar';
+import { onShared, syncReminders, registerHotkey } from './native';
 
 type View = 'board' | 'calendar';
 
@@ -107,6 +108,25 @@ export default function App() {
     history.replaceState(null, '', location.pathname + location.hash);
     if (body) add(body, 'share');
   }, [session, add]);
+
+  // Native apps: share sheet (Android), reminders (both), global hotkey (Windows)
+  useEffect(() => {
+    if (!session) return;
+    let off = () => {};
+    onShared((text) => add(text, 'share')).then((f) => (off = f));
+    return () => off();
+  }, [session, add]);
+
+  useEffect(() => {
+    if (session) syncReminders(items);
+  }, [session, items]);
+
+  useEffect(() => {
+    registerHotkey(() => {
+      setView('board');
+      window.dispatchEvent(new Event('board-focus-capture'));
+    }).catch((e) => console.warn('hotkey', e));
+  }, []);
 
   useEffect(() => {
     history.replaceState(null, '', `${location.pathname}${location.search}${view === 'calendar' ? '#calendar' : ''}`);

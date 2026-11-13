@@ -1,0 +1,16 @@
+{
+  "appId": "com.nzimmerapps.board",
+  "appName": "Board",
+  "webDir": "dist",
+  "android": {
+    "path": "../android",
+    "adjustMarginsForEdgeToEdge": "auto",
+    "backgroundColor": "#0d0f0e"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_board",
+      "iconColor": "#4ADE80"
+    }
+  }
+}
