@@ -1,0 +1,7 @@
+body { width: 340px; margin: 0; padding: 12px; background: #0d0f0e; color: #e8efe9; font: 13px system-ui, sans-serif; }
+h1 { font-family: Georgia, serif; margin: 0 0 8px; font-size: 20px; }
+input[type=email], input[type=password], textarea { box-sizing: border-box; width: 100%; margin-bottom: 8px; padding: 8px; background: #151917; color: inherit; border: 1px solid #26302b; border-radius: 8px; font: 13px ui-monospace, Consolas, monospace; }
+button { padding: 6px 12px; border-radius: 8px; border: 1px solid #4ade80; background: #4ade80; color: #062312; font-weight: 600; cursor: pointer; }
+.row { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; }
+a { color: #8a978f; } .muted { opacity: .6; font-weight: 400; }
+#msg { margin: 6px 0 0; color: #4ade80; min-height: 1em; } #msg.err { color: #f87171; }

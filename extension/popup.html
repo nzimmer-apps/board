@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <div id="login" hidden>
+    <h1>Board</h1>
+    <input id="email" type="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Password">
+    <button id="signin" class="primary">Sign in</button>
+  </div>
+  <div id="main" hidden>
+    <textarea id="text" rows="5" placeholder="Type or paste…  #tag  ·  'call John fri 3pm'"></textarea>
+    <label class="row"><input id="withpage" type="checkbox"> include this page's link</label>
+    <div class="row">
+      <button id="save" class="primary">Save  <span class="muted">Ctrl+Enter</span></button>
+      <a id="open" href="#" target="_blank">Open board</a>
+      <a id="signout" href="#">Sign out</a>
+    </div>
+  </div>
+  <p id="msg"></p>
+  <script src="config.js"></script><script src="parse.js"></script><script src="api.js"></script><script src="popup.js"></script>
+</body></html>
