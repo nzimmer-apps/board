@@ -31,7 +31,7 @@ export default function App() {
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from('items')
-      .select('id,body,url,tags,source,due_at,all_day,kind,done,pinned,archived,created_at,image_path,ocr_text')
+      .select('id,body,url,tags,source,due_at,all_day,kind,done,pinned,archived,created_at,image_path,ocr_text,remind_offsets')
       .eq('archived', false)
       .order('created_at', { ascending: false })
       .limit(1000);
@@ -56,8 +56,8 @@ export default function App() {
   }, [session, load]);
 
   const add = useCallback(
-    async (raw: string, source = 'app') => {
-      const p = parseInput(raw);
+    async (raw: string, source = 'app', remind_offsets: number[] = [0]) => {
+      const p = { ...parseInput(raw), remind_offsets };
       const optimistic: Item = {
         id: `tmp-${Date.now()}`, ...p, source, done: false, pinned: false, archived: false,
         created_at: new Date().toISOString(), image_path: null, ocr_text: null,
@@ -70,8 +70,9 @@ export default function App() {
         return false;
       }
       setItems((xs) => xs.map((x) => (x.id === optimistic.id ? (data as Item) : x)));
+      const bell = p.due_at && remind_offsets.length ? ' 🔔' : '';
       const when = p.due_at ? ` · ${new Date(p.due_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', ...(p.all_day ? {} : { hour: 'numeric', minute: '2-digit' }) })}` : '';
-      flash(`Saved${p.tags.length ? ` to #${p.tags.join(' #')}` : ''}${when}`);
+      flash(`Saved${p.tags.length ? ` to #${p.tags.join(' #')}` : ''}${when}${bell}`);
       return true;
     },
     [flash],
@@ -100,7 +101,7 @@ export default function App() {
   // Images: shrink → upload → item row. OCR runs afterwards in the queue below.
   const localBlobs = useRef(new Map<string, Blob>());
   const addImage = useCallback(
-    async (file: Blob, caption = '', source = 'app') => {
+    async (file: Blob, caption = '', source = 'app', remind_offsets: number[] = [0]) => {
       flash('Uploading image…');
       try {
         const blob = await shrink(file);
@@ -109,7 +110,7 @@ export default function App() {
         const p = parseInput(caption);
         const { data, error } = await supabase
           .from('items')
-          .insert({ ...p, body: caption.trim() ? p.body : '', image_path: path, source })
+          .insert({ ...p, body: caption.trim() ? p.body : '', image_path: path, source, remind_offsets })
           .select()
           .single();
         if (error) throw error;

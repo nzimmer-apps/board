@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { imageUrl } from './images';
+import ReminderPicker, { offsetLabel } from './Reminders';
 import type { Item } from './supabase';
 
 export function fmtDue(it: Pick<Item, 'due_at' | 'all_day'>) {
@@ -63,6 +64,7 @@ export default function Card({ item, onUpdate, onRemove, onTag }: Props) {
   const [body, setBody] = useState(item.body);
   const [due, setDue] = useState(toLocalInput(item.due_at));
   const [tags, setTags] = useState(item.tags.join(' '));
+  const [remind, setRemind] = useState<number[]>(item.remind_offsets ?? [0]);
   const overdue = item.due_at && !item.done && new Date(item.due_at) < new Date();
   const created = new Date(item.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -73,6 +75,7 @@ export default function Card({ item, onUpdate, onRemove, onTag }: Props) {
       all_day: due ? item.all_day && due.endsWith('09:00') : false,
       kind: due ? item.kind ?? 'event' : null,
       tags: tags.split(/[\s,#]+/).map((t) => t.toLowerCase()).filter(Boolean),
+      remind_offsets: remind,
     });
     setEditing(false);
   }
@@ -107,6 +110,7 @@ export default function Card({ item, onUpdate, onRemove, onTag }: Props) {
         <div className="edit">
           <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} />
           <label>Date <input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} /></label>
+          {due && <ReminderPicker value={remind} onChange={setRemind} />}
           <label>Tags <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="work llc" /></label>
           <div className="row">
             <button className="primary" onClick={save}>Save</button>
@@ -124,6 +128,9 @@ export default function Card({ item, onUpdate, onRemove, onTag }: Props) {
         <div className={overdue ? 'due overdue' : 'due'}>
           {item.kind === 'deadline' ? 'Due ' : item.kind === 'reminder' ? 'Remind ' : ''}
           {fmtDue(item)}
+          {(item.remind_offsets ?? []).length > 0
+            ? <span className="muted"> · 🔔 {(item.remind_offsets ?? []).map(offsetLabel).join(', ')}</span>
+            : <span className="muted"> · 🔕</span>}
         </div>
       )}
     </article>

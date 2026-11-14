@@ -27,4 +27,5 @@ export interface Item {
   created_at: string;
   image_path: string | null;
   ocr_text: string | null;
+  remind_offsets: number[];
 }

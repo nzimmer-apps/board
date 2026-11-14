@@ -38,18 +38,32 @@ export async function onShared(
 
 // ---------- Reminders ----------
 
-const upcoming = (items: Item[], days: number) => {
-  const now = Date.now();
-  const horizon = now + days * 864e5;
-  return items
+// One entry per (item, chosen offset): fires at due_at minus the offset.
+interface Alert { i: Item; t: number; off: number; key: string }
+const alerts = (items: Item[], fromMs: number, toMs: number): Alert[] =>
+  items
     .filter((i) => i.due_at && !i.done && !i.archived)
-    .map((i) => ({ i, t: new Date(i.due_at!).getTime() }))
-    .filter(({ t }) => t > now && t < horizon)
+    .flatMap((i) =>
+      (i.remind_offsets ?? [0]).map((off) => {
+        const t = new Date(i.due_at!).getTime() - off * 60e3;
+        return { i, t, off, key: `${i.id}:${off}` };
+      }),
+    )
+    .filter(({ t }) => t > fromMs && t < toMs)
     .sort((a, b) => a.t - b.t);
-};
 
 const label = (i: Item) =>
-  i.kind === 'deadline' ? 'Due now' : i.kind === 'reminder' ? 'Reminder' : 'Coming up';
+  i.kind === 'deadline' ? 'Deadline' : i.kind === 'reminder' ? 'Reminder' : 'Event';
+
+const when = (a: Alert) => {
+  if (a.off === 0) return a.i.kind === 'deadline' ? 'due now' : 'now';
+  const d = new Date(a.i.due_at!);
+  const sameDay = new Date(a.t).toDateString() === d.toDateString();
+  return 'at ' + d.toLocaleString([], sameDay ? { hour: 'numeric', minute: '2-digit' } : { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+};
+
+const title = (a: Alert) => `${label(a.i)} ${when(a)}`;
+const text = (i: Item) => (i.body.split('\n')[0] || 'Image note').slice(0, 120);
 
 // Stable 31-bit int from the uuid, required by Android notification ids.
 const notifId = (id: string) => {
@@ -63,8 +77,8 @@ let lastAndroidSig = '';
 /** Android: (re)schedule OS notifications for the next 30 days of dated items. */
 async function syncAndroid(items: Item[]) {
   const { LocalNotifications } = await import('@capacitor/local-notifications');
-  const next = upcoming(items, 30).slice(0, 60);
-  const sig = next.map(({ i, t }) => `${i.id}@${t}:${i.body.length}`).join('|');
+  const next = alerts(items, Date.now(), Date.now() + 30 * 864e5).slice(0, 60);
+  const sig = next.map((a) => `${a.key}@${a.t}:${a.i.body.length}`).join('|');
   if (sig === lastAndroidSig) return;
   lastAndroidSig = sig;
   let perm = await LocalNotifications.checkPermissions();
@@ -75,12 +89,12 @@ async function syncAndroid(items: Item[]) {
   if (pending.notifications.length) await LocalNotifications.cancel({ notifications: pending.notifications });
   if (!next.length) return;
   await LocalNotifications.schedule({
-    notifications: next.map(({ i, t }) => ({
-      id: notifId(i.id),
-      title: label(i),
-      body: i.body.split('\n')[0].slice(0, 120),
-      schedule: { at: new Date(t), allowWhileIdle: true },
-      extra: { itemId: i.id },
+    notifications: next.map((a) => ({
+      id: notifId(a.key),
+      title: title(a),
+      body: text(a.i),
+      schedule: { at: new Date(a.t), allowWhileIdle: true },
+      extra: { itemId: a.i.id },
     })),
   });
 }
@@ -96,13 +110,11 @@ async function tauriTick() {
   if (!ok) ok = (await requestPermission()) === 'granted';
   if (!ok) return;
   const now = Date.now();
-  for (const i of tauriItems) {
-    if (!i.due_at || i.done || i.archived || fired.has(i.id)) continue;
-    const t = new Date(i.due_at).getTime();
-    if (t <= now && t > now - 10 * 60e3) {
-      fired.add(i.id);
-      sendNotification({ title: label(i), body: i.body.split('\n')[0].slice(0, 120) });
-    }
+  for (const a of alerts(tauriItems, now - 10 * 60e3, now + 1)) {
+    const k = `${a.key}@${a.t}`;
+    if (fired.has(k)) continue;
+    fired.add(k);
+    sendNotification({ title: title(a), body: text(a.i) });
   }
 }
 

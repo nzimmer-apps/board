@@ -99,3 +99,10 @@ a { color: var(--accent); word-break: break-all; }
 .ocr-label { font-size: 9px; letter-spacing: .08em; color: var(--accent); border: 1px solid var(--accent-dim); border-radius: 3px; padding: 0 3px; }
 .lightbox { position: fixed; inset: 0; z-index: 20; background: #000d; display: grid; place-items: center; cursor: zoom-out; }
 .lightbox img { max-width: 96vw; max-height: 94vh; border-radius: 6px; }
+
+/* live date preview + notification chips */
+.preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -2px 0 10px; font-size: 13px; }
+.preview .when { font-family: var(--mono); color: var(--accent); }
+.remind { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.remind .chip { font-size: 11px; padding: 2px 8px; text-transform: none; }
+.small { font-size: 11px; }

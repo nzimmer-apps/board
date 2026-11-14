@@ -23,3 +23,6 @@ create policy "own images write" on storage.objects for insert to authenticated
   with check (bucket_id = 'images' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "own images delete" on storage.objects for delete to authenticated
   using (bucket_id = 'images' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Notifications chosen when the note is added: minutes before due_at (0 = at the time). Empty = no notification.
+alter table public.items add column if not exists remind_offsets int[] not null default '{0}';

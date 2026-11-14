@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Item } from './supabase';
 import Card, { fmtDue } from './Card';
+import ReminderPicker from './Reminders';
+import { parseInput } from './parse';
 
 interface Props {
   items: Item[];
-  onAdd: (raw: string) => Promise<boolean>;
-  onAddImage: (img: Blob, caption: string) => Promise<boolean>;
+  onAdd: (raw: string, source?: string, remind?: number[]) => Promise<boolean>;
+  onAddImage: (img: Blob, caption: string, source?: string, remind?: number[]) => Promise<boolean>;
   onUpdate: (id: string, patch: Partial<Item>) => void;
   onRemove: (id: string) => void;
 }
@@ -17,6 +19,9 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [remind, setRemind] = useState<number[]>([0]);
+  // Live preview: show the detected date and notification choices while typing.
+  const preview = useMemo(() => (draft.trim() ? parseInput(draft) : null), [draft]);
 
   // Images use the typed text (if any) as their caption, so "#receipts" + a photo is filed under receipts.
   async function addFiles(files: Iterable<File>) {
@@ -24,7 +29,8 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
     if (!imgs.length) return;
     const caption = draft.trim();
     setDraft('');
-    for (const f of imgs) await onAddImage(f, caption);
+    for (const f of imgs) await onAddImage(f, caption, 'app', remind);
+    setRemind([0]);
   }
 
   useEffect(() => {
@@ -63,8 +69,9 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
     const text = draft.trim();
     if (!text) return;
     setDraft('');
-    const ok = await onAdd(text);
+    const ok = await onAdd(text, 'app', remind);
     if (!ok) setDraft(text);
+    else setRemind([0]);
     inputRef.current?.focus();
   }
 
@@ -95,6 +102,17 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
         <button title="Add image (or paste / drop one)" onClick={() => fileRef.current?.click()}>🖼</button>
         <button className="primary" onClick={submit} disabled={!draft.trim()}>Add</button>
       </div>
+
+      {preview?.due_at && (
+        <div className="preview">
+          <span className="when">
+            {preview.kind === 'deadline' ? 'Due ' : preview.kind === 'reminder' ? 'Remind ' : '📅 '}
+            {fmtDue(preview)}
+          </span>
+          {preview.tags.length > 0 && <span className="muted">#{preview.tags.join(' #')}</span>}
+          <ReminderPicker value={remind} onChange={setRemind} />
+        </div>
+      )}
 
       <div className="filters">
         <input className="search" type="search" placeholder="Search text, #tags or dates…" value={q}
