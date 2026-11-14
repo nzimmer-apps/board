@@ -5,15 +5,27 @@ import Card, { fmtDue } from './Card';
 interface Props {
   items: Item[];
   onAdd: (raw: string) => Promise<boolean>;
+  onAddImage: (img: Blob, caption: string) => Promise<boolean>;
   onUpdate: (id: string, patch: Partial<Item>) => void;
   onRemove: (id: string) => void;
 }
 
-export default function Board({ items, onAdd, onUpdate, onRemove }: Props) {
+export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: Props) {
   const [draft, setDraft] = useState('');
   const [q, setQ] = useState('');
   const [tag, setTag] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  // Images use the typed text (if any) as their caption, so "#receipts" + a photo is filed under receipts.
+  async function addFiles(files: Iterable<File>) {
+    const imgs = [...files].filter((f) => f.type.startsWith('image/'));
+    if (!imgs.length) return;
+    const caption = draft.trim();
+    setDraft('');
+    for (const f of imgs) await onAddImage(f, caption);
+  }
 
   useEffect(() => {
     const f = () => setTimeout(() => inputRef.current?.focus(), 50);
@@ -41,7 +53,7 @@ export default function Board({ items, onAdd, onUpdate, onRemove }: Props) {
       .filter((i) => !tag || i.tags.includes(tag))
       .filter((i) => {
         if (!terms.length) return true;
-        const hay = `${i.body} ${i.url ?? ''} ${i.tags.map((t) => '#' + t).join(' ')} ${fmtDue(i)}`.toLowerCase();
+        const hay = `${i.body} ${i.ocr_text ?? ''} ${i.url ?? ''} ${i.tags.map((t) => '#' + t).join(' ')} ${fmtDue(i)}`.toLowerCase();
         return terms.every((t) => hay.includes(t));
       })
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.created_at.localeCompare(a.created_at));
@@ -58,8 +70,17 @@ export default function Board({ items, onAdd, onUpdate, onRemove }: Props) {
 
   return (
     <main>
-      <div className="capture">
+      <div
+        className={dragging ? 'capture dragging' : 'capture'}
+        onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
+      >
         <textarea
+          onPaste={(e) => {
+            const files = [...e.clipboardData.files];
+            if (files.some((f) => f.type.startsWith('image/'))) { e.preventDefault(); addFiles(files); }
+          }}
           ref={inputRef}
           value={draft}
           rows={2}
@@ -69,6 +90,9 @@ export default function Board({ items, onAdd, onUpdate, onRemove }: Props) {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
           }}
         />
+        <input ref={fileRef} type="file" accept="image/*" multiple hidden
+          onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
+        <button title="Add image (or paste / drop one)" onClick={() => fileRef.current?.click()}>🖼</button>
         <button className="primary" onClick={submit} disabled={!draft.trim()}>Add</button>
       </div>
 
@@ -93,7 +117,7 @@ export default function Board({ items, onAdd, onUpdate, onRemove }: Props) {
               <li key={i.id} className={new Date(i.due_at!) < new Date() ? 'overdue' : ''}>
                 <button className="tick" title="Mark done" onClick={() => onUpdate(i.id, { done: true })}>○</button>
                 <span className="when">{fmtDue(i)}</span>
-                <span className="what">{i.body.split('\n')[0]}</span>
+                <span className="what">{i.body.split('\n')[0] || 'Image'}</span>
               </li>
             ))}
           </ul>

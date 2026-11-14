@@ -6,6 +6,7 @@ import Auth from './Auth';
 import Board from './Board';
 import Calendar from './Calendar';
 import { onShared, syncReminders, registerHotkey } from './native';
+import { shrink, upload, readText, download, removeImage } from './images';
 
 type View = 'board' | 'calendar';
 
@@ -30,7 +31,7 @@ export default function App() {
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from('items')
-      .select('id,body,url,tags,source,due_at,all_day,kind,done,pinned,archived,created_at')
+      .select('id,body,url,tags,source,due_at,all_day,kind,done,pinned,archived,created_at,image_path,ocr_text')
       .eq('archived', false)
       .order('created_at', { ascending: false })
       .limit(1000);
@@ -59,7 +60,7 @@ export default function App() {
       const p = parseInput(raw);
       const optimistic: Item = {
         id: `tmp-${Date.now()}`, ...p, source, done: false, pinned: false, archived: false,
-        created_at: new Date().toISOString(),
+        created_at: new Date().toISOString(), image_path: null, ocr_text: null,
       };
       setItems((xs) => [optimistic, ...xs]);
       const { data, error } = await supabase.from('items').insert({ ...p, source }).select().single();
@@ -87,12 +88,67 @@ export default function App() {
 
   const remove = useCallback(
     async (id: string) => {
+      const path = items.find((x) => x.id === id)?.image_path;
       setItems((xs) => xs.filter((x) => x.id !== id));
       const { error } = await supabase.from('items').delete().eq('id', id);
-      if (error) { flash(error.message); load(); }
+      if (error) { flash(error.message); load(); return; }
+      if (path) removeImage(path).catch(() => {});
     },
-    [flash, load],
+    [flash, load, items],
   );
+
+  // Images: shrink → upload → item row. OCR runs afterwards in the queue below.
+  const localBlobs = useRef(new Map<string, Blob>());
+  const addImage = useCallback(
+    async (file: Blob, caption = '', source = 'app') => {
+      flash('Uploading image…');
+      try {
+        const blob = await shrink(file);
+        const path = await upload(blob);
+        localBlobs.current.set(path, blob);
+        const p = parseInput(caption);
+        const { data, error } = await supabase
+          .from('items')
+          .insert({ ...p, body: caption.trim() ? p.body : '', image_path: path, source })
+          .select()
+          .single();
+        if (error) throw error;
+        setItems((xs) => [data as Item, ...xs]);
+        flash('Image saved · reading text…');
+        return true;
+      } catch (e) {
+        flash(`Image not saved: ${(e as Error).message}`);
+        return false;
+      }
+    },
+    [flash],
+  );
+
+  // OCR queue: any image without text yet gets read on this device, one at a time.
+  const ocrBusy = useRef(false);
+  const ocrFailed = useRef(new Set<string>());
+  useEffect(() => {
+    if (!session || ocrBusy.current) return;
+    const next = items.find((i) => i.image_path && i.ocr_text === null && !i.id.startsWith('tmp-') && !ocrFailed.current.has(i.id));
+    if (!next) return;
+    ocrBusy.current = true;
+    (async () => {
+      try {
+        const blob = localBlobs.current.get(next.image_path!) ?? (await download(next.image_path!));
+        if (!blob) throw new Error('download failed');
+        const text = await readText(blob);
+        localBlobs.current.delete(next.image_path!);
+        await update(next.id, { ocr_text: text });
+        if (text) flash(`Read ${text.split(/\s+/).length} words from image`);
+      } catch (e) {
+        console.warn('ocr', e);
+        ocrFailed.current.add(next.id);
+      } finally {
+        ocrBusy.current = false;
+        setItems((xs) => [...xs]); // nudge the queue to look for the next one
+      }
+    })();
+  }, [session, items, update, flash]);
 
   // Android share sheet → manifest share_target opens ./?share=1&title=…&text=…&url=…
   useEffect(() => {
@@ -113,9 +169,9 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
     let off = () => {};
-    onShared((text) => add(text, 'share')).then((f) => (off = f));
+    onShared((text) => add(text, 'share'), (img, caption) => addImage(img, caption, 'share')).then((f) => (off = f));
     return () => off();
-  }, [session, add]);
+  }, [session, add, addImage]);
 
   useEffect(() => {
     if (session) syncReminders(items);
@@ -153,7 +209,7 @@ export default function App() {
         <button className="link small" onClick={() => supabase.auth.signOut()}>Sign out</button>
       </header>
       {view === 'board' ? (
-        <Board items={items} onAdd={add} onUpdate={update} onRemove={remove} />
+        <Board items={items} onAdd={add} onAddImage={addImage} onUpdate={update} onRemove={remove} />
       ) : (
         <Calendar items={items} onUpdate={update} onRemove={remove} />
       )}

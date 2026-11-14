@@ -25,4 +25,6 @@ export interface Item {
   pinned: boolean;
   archived: boolean;
   created_at: string;
+  image_path: string | null;
+  ocr_text: string | null;
 }

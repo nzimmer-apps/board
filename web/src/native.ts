@@ -7,18 +7,32 @@ export const isAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform()
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 export const isNativeApp = isAndroid || isTauri;
 
+interface Shared { text: string | null; image?: string | null } // image = base64 JPEG, already downscaled natively
 interface ShareIntentPlugin {
-  takePending(): Promise<{ text: string | null }>;
-  addListener(event: 'shared', cb: (d: { text: string }) => void): Promise<{ remove: () => void }>;
+  takePending(): Promise<Shared>;
+  addListener(event: 'shared', cb: (d: Shared) => void): Promise<{ remove: () => void }>;
 }
 const ShareIntent = registerPlugin<ShareIntentPlugin>('ShareIntent');
 
-/** Text shared into the Android app from other apps' share sheet. */
-export async function onShared(cb: (text: string) => void): Promise<() => void> {
+const b64ToBlob = (b64: string) => {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: 'image/jpeg' });
+};
+
+/** Text or images shared into the Android app from other apps' share sheet. */
+export async function onShared(
+  onText: (text: string) => void,
+  onImage: (img: Blob, caption: string) => void,
+): Promise<() => void> {
   if (!isAndroid) return () => {};
-  const first = await ShareIntent.takePending().catch(() => ({ text: null }));
-  if (first.text) cb(first.text);
-  const h = await ShareIntent.addListener('shared', (d) => d.text && cb(d.text));
+  const handle = (d: Shared) => {
+    if (d.image) onImage(b64ToBlob(d.image), d.text ?? '');
+    else if (d.text) onText(d.text);
+  };
+  handle(await ShareIntent.takePending().catch(() => ({ text: null }) as Shared));
+  const h = await ShareIntent.addListener('shared', handle);
   return () => h.remove();
 }
 

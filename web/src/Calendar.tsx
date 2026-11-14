@@ -57,7 +57,7 @@ export default function Calendar({ items, onUpdate, onRemove }: Props) {
             <button key={d.toISOString()} className={cls} onClick={() => setPicked(d)}>
               <span className="num">{d.getDate()}</span>
               {list.slice(0, 3).map((i) => (
-                <span key={i.id} className={`pill ${i.kind ?? ''} ${i.done ? 'done' : ''}`}>{i.body.split('\n')[0]}</span>
+                <span key={i.id} className={`pill ${i.kind ?? ''} ${i.done ? 'done' : ''}`}>{i.body.split('\n')[0] || 'Image'}</span>
               ))}
               {list.length > 3 && <span className="more">+{list.length - 3}</span>}
             </button>

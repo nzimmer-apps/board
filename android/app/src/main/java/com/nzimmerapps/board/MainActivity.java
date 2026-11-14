@@ -1,49 +1,102 @@
 package com.nzimmerapps.board;
 
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.util.Base64;
+import androidx.exifinterface.media.ExifInterface;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.PluginHandle;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 
 public class MainActivity extends BridgeActivity {
+    private static final int MAX_SIDE = 1600;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ShareIntentPlugin.class);
         super.onCreate(savedInstanceState);
-        String text = extract(getIntent());
-        if (text != null) ShareIntentPlugin.setPending(text);
+        ShareIntentPlugin.Shared s = extract(getIntent());
+        if (s != null) ShareIntentPlugin.setPending(s);
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        String text = extract(intent);
-        if (text == null) return;
+        ShareIntentPlugin.Shared s = extract(intent);
+        if (s == null) return;
         PluginHandle h = getBridge() == null ? null : getBridge().getPlugin("ShareIntent");
         if (h != null && h.getInstance() instanceof ShareIntentPlugin) {
-            ((ShareIntentPlugin) h.getInstance()).emit(text);
+            ((ShareIntentPlugin) h.getInstance()).emit(s);
         } else {
-            ShareIntentPlugin.setPending(text);
+            ShareIntentPlugin.setPending(s);
         }
     }
 
-    private static String extract(Intent intent) {
+    private ShareIntentPlugin.Shared extract(Intent intent) {
         if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return null;
-        String subject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
-        CharSequence body = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
-        StringBuilder sb = new StringBuilder();
-        if (subject != null && !subject.trim().isEmpty()) sb.append(subject.trim());
-        if (body != null && body.toString().trim().length() > 0) {
-            String b = body.toString().trim();
-            if (sb.length() == 0 || !b.contains(sb.toString())) {
-                if (sb.length() > 0) sb.append('\n');
-                sb.append(b);
-            } else {
-                sb.setLength(0);
-                sb.append(b);
-            }
+        String text = textOf(intent);
+        String image = null;
+        String type = intent.getType();
+        if (type != null && type.startsWith("image/")) {
+            Uri uri;
+            if (Build.VERSION.SDK_INT >= 33) uri = intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class);
+            else uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (uri != null) image = encode(uri);
         }
         intent.setAction(Intent.ACTION_MAIN); // don't re-save on rotation/recreate
-        return sb.length() == 0 ? null : sb.toString();
+        if (text == null && image == null) return null;
+        return new ShareIntentPlugin.Shared(text, image);
+    }
+
+    private static String textOf(Intent intent) {
+        String subject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
+        CharSequence body = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+        String s = subject == null ? "" : subject.trim();
+        String b = body == null ? "" : body.toString().trim();
+        if (b.isEmpty()) return s.isEmpty() ? null : s;
+        if (s.isEmpty() || b.contains(s)) return b;
+        return s + "\n" + b;
+    }
+
+    /** Decode with subsampling, fix rotation, scale to ≤1600px, JPEG 82%, base64. */
+    private String encode(Uri uri) {
+        try {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            try (InputStream in = getContentResolver().openInputStream(uri)) { BitmapFactory.decodeStream(in, null, bounds); }
+            int sample = 1;
+            while (Math.max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= MAX_SIDE) sample *= 2;
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inSampleSize = sample;
+            Bitmap bmp;
+            try (InputStream in = getContentResolver().openInputStream(uri)) { bmp = BitmapFactory.decodeStream(in, null, opts); }
+            if (bmp == null) return null;
+
+            int rotate = 0;
+            try (InputStream in = getContentResolver().openInputStream(uri)) {
+                int o = new ExifInterface(in).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+                if (o == ExifInterface.ORIENTATION_ROTATE_90) rotate = 90;
+                else if (o == ExifInterface.ORIENTATION_ROTATE_180) rotate = 180;
+                else if (o == ExifInterface.ORIENTATION_ROTATE_270) rotate = 270;
+            } catch (Exception ignored) {}
+
+            float scale = Math.min(1f, (float) MAX_SIDE / Math.max(bmp.getWidth(), bmp.getHeight()));
+            Matrix m = new Matrix();
+            m.postScale(scale, scale);
+            if (rotate != 0) m.postRotate(rotate);
+            Bitmap out = Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(), m, true);
+
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            out.compress(Bitmap.CompressFormat.JPEG, 82, buf);
+            return Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

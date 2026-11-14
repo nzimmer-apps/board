@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { imageUrl } from './images';
 import type { Item } from './supabase';
 
 export function fmtDue(it: Pick<Item, 'due_at' | 'all_day'>) {
@@ -30,6 +31,25 @@ function Body({ text }: { text: string }) {
   );
 }
 
+function Picture({ path, onOpen }: { path: string; onOpen: (url: string) => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => { let live = true; imageUrl(path).then((u) => live && setUrl(u)); return () => { live = false; }; }, [path]);
+  if (!url) return <div className="pic loading" />;
+  return <img className="pic" src={url} alt="" loading="lazy" onClick={() => onOpen(url)} />;
+}
+
+function OcrText({ text }: { text: string | null }) {
+  const [open, setOpen] = useState(false);
+  if (text === null) return <div className="ocr muted">Reading text…</div>;
+  if (!text) return null;
+  const short = text.length > 140 && !open;
+  return (
+    <div className="ocr" onClick={() => setOpen(!open)} title="Text found in the image">
+      <span className="ocr-label">TEXT</span> {short ? text.slice(0, 140).replace(/\n/g, ' ') + '…' : text}
+    </div>
+  );
+}
+
 interface Props {
   item: Item;
   onUpdate: (id: string, patch: Partial<Item>) => void;
@@ -39,6 +59,7 @@ interface Props {
 
 export default function Card({ item, onUpdate, onRemove, onTag }: Props) {
   const [editing, setEditing] = useState(false);
+  const [zoom, setZoom] = useState<string | null>(null);
   const [body, setBody] = useState(item.body);
   const [due, setDue] = useState(toLocalInput(item.due_at));
   const [tags, setTags] = useState(item.tags.join(' '));
@@ -94,8 +115,11 @@ export default function Card({ item, onUpdate, onRemove, onTag }: Props) {
           </div>
         </div>
       ) : (
-        <Body text={item.body} />
+        item.body && <Body text={item.body} />
       )}
+      {item.image_path && <Picture path={item.image_path} onOpen={setZoom} />}
+      {item.image_path && !editing && <OcrText text={item.ocr_text} />}
+      {zoom && <div className="lightbox" onClick={() => setZoom(null)}><img src={zoom} alt="" /></div>}
       {item.due_at && !editing && (
         <div className={overdue ? 'due overdue' : 'due'}>
           {item.kind === 'deadline' ? 'Due ' : item.kind === 'reminder' ? 'Remind ' : ''}
