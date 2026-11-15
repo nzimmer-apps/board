@@ -44,7 +44,7 @@ const alerts = (items: Item[], fromMs: number, toMs: number): Alert[] =>
   items
     .filter((i) => i.due_at && !i.done && !i.archived)
     .flatMap((i) =>
-      (i.remind_offsets ?? [0]).map((off) => {
+      (i.remind_offsets ?? []).map((off) => {
         const t = new Date(i.due_at!).getTime() - off * 60e3;
         return { i, t, off, key: `${i.id}:${off}` };
       }),
@@ -63,7 +63,7 @@ const when = (a: Alert) => {
 };
 
 const title = (a: Alert) => `${label(a.i)} ${when(a)}`;
-const text = (i: Item) => (i.body.split('\n')[0] || 'Image note').slice(0, 120);
+const text = (i: Item) => (i.body.split('\n')[0] || i.ocr_text?.split('\n')[0] || 'Image note').slice(0, 120);
 
 // Stable 31-bit int from the uuid, required by Android notification ids.
 const notifId = (id: string) => {

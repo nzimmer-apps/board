@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { imageUrl } from './images';
-import ReminderPicker, { offsetLabel } from './Reminders';
+import ReminderPicker, { OFFSETS, chipLabel, offsetLabel } from './Reminders';
 import type { Item } from './supabase';
 
 export function fmtDue(it: Pick<Item, 'due_at' | 'all_day'>) {
@@ -64,7 +64,8 @@ export default function Card({ item, onUpdate, onRemove, onTag }: Props) {
   const [body, setBody] = useState(item.body);
   const [due, setDue] = useState(toLocalInput(item.due_at));
   const [tags, setTags] = useState(item.tags.join(' '));
-  const [remind, setRemind] = useState<number[]>(item.remind_offsets ?? [0]);
+  const [remind, setRemind] = useState<number[] | null>(item.remind_offsets);
+  const needsReminder = Boolean(due) && remind === null;
   const overdue = item.due_at && !item.done && new Date(item.due_at) < new Date();
   const created = new Date(item.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -109,11 +110,17 @@ export default function Card({ item, onUpdate, onRemove, onTag }: Props) {
       {editing ? (
         <div className="edit">
           <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} />
-          <label>Date <input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} /></label>
+          <label>Date <input type="datetime-local" value={due} onChange={(e) => {
+            setDue(e.target.value);
+            // A new or moved date is a new schedule: ask again rather than carry the old choice over.
+            if (e.target.value !== toLocalInput(item.due_at)) setRemind(null);
+            else setRemind(item.remind_offsets);
+          }} /></label>
           {due && <ReminderPicker value={remind} onChange={setRemind} />}
           <label>Tags <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="work llc" /></label>
           <div className="row">
-            <button className="primary" onClick={save}>Save</button>
+            <button className="primary" onClick={save} disabled={needsReminder}
+              title={needsReminder ? 'Pick when to be reminded first' : undefined}>Save</button>
             <button onClick={() => setEditing(false)}>Cancel</button>
             <button className="danger" onClick={() => confirm('Delete permanently?') && onRemove(item.id)}>Delete</button>
           </div>
@@ -128,9 +135,23 @@ export default function Card({ item, onUpdate, onRemove, onTag }: Props) {
         <div className={overdue ? 'due overdue' : 'due'}>
           {item.kind === 'deadline' ? 'Due ' : item.kind === 'reminder' ? 'Remind ' : ''}
           {fmtDue(item)}
-          {(item.remind_offsets ?? []).length > 0
-            ? <span className="muted"> · 🔔 {(item.remind_offsets ?? []).map(offsetLabel).join(', ')}</span>
-            : <span className="muted"> · 🔕</span>}
+          {item.remind_offsets === null
+            ? null
+            : item.remind_offsets.length > 0
+              ? <span className="muted"> · 🔔 {item.remind_offsets.map(offsetLabel).join(', ')}</span>
+              : <span className="muted"> · 🔕</span>}
+        </div>
+      )}
+      {item.due_at && !editing && !item.done && item.remind_offsets === null && (
+        // Dated but no reminder chosen (image flyer, share sheet, extension…): one tap sets it.
+        <div className="ask-remind">
+          <span>🔔 When should I remind you?</span>
+          <div className="row">
+            {OFFSETS.map((o) => (
+              <button key={o.m} className="chip" onClick={() => onUpdate(item.id, { remind_offsets: [o.m] })}>{chipLabel(o)}</button>
+            ))}
+            <button className="chip" onClick={() => onUpdate(item.id, { remind_offsets: [] })}>None</button>
+          </div>
         </div>
       )}
     </article>

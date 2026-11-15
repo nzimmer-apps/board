@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, configured, type Item } from './supabase';
-import { parseInput } from './parse';
+import { parseInput, findEventDate } from './parse';
 import Auth from './Auth';
 import Board from './Board';
 import Calendar from './Calendar';
@@ -56,8 +56,10 @@ export default function App() {
   }, [session, load]);
 
   const add = useCallback(
-    async (raw: string, source = 'app', remind_offsets: number[] = [0]) => {
-      const p = { ...parseInput(raw), remind_offsets };
+    async (raw: string, source = 'app', remind: number[] | null = null) => {
+      const parsed = parseInput(raw);
+      // A reminder is never assumed: dated notes without a choice save as null and the card asks.
+      const p = { ...parsed, remind_offsets: parsed.due_at ? remind : null };
       const optimistic: Item = {
         id: `tmp-${Date.now()}`, ...p, source, done: false, pinned: false, archived: false,
         created_at: new Date().toISOString(), image_path: null, ocr_text: null,
@@ -70,7 +72,7 @@ export default function App() {
         return false;
       }
       setItems((xs) => xs.map((x) => (x.id === optimistic.id ? (data as Item) : x)));
-      const bell = p.due_at && remind_offsets.length ? ' 🔔' : '';
+      const bell = !p.due_at ? '' : p.remind_offsets === null ? ' · pick a reminder' : p.remind_offsets.length ? ' 🔔' : '';
       const when = p.due_at ? ` · ${new Date(p.due_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', ...(p.all_day ? {} : { hour: 'numeric', minute: '2-digit' }) })}` : '';
       flash(`Saved${p.tags.length ? ` to #${p.tags.join(' #')}` : ''}${when}${bell}`);
       return true;
@@ -101,7 +103,7 @@ export default function App() {
   // Images: shrink → upload → item row. OCR runs afterwards in the queue below.
   const localBlobs = useRef(new Map<string, Blob>());
   const addImage = useCallback(
-    async (file: Blob, caption = '', source = 'app', remind_offsets: number[] = [0]) => {
+    async (file: Blob, caption = '', source = 'app', remind: number[] | null = null) => {
       flash('Uploading image…');
       try {
         const blob = await shrink(file);
@@ -110,7 +112,7 @@ export default function App() {
         const p = parseInput(caption);
         const { data, error } = await supabase
           .from('items')
-          .insert({ ...p, body: caption.trim() ? p.body : '', image_path: path, source, remind_offsets })
+          .insert({ ...p, body: caption.trim() ? p.body : '', image_path: path, source, remind_offsets: p.due_at ? remind : null })
           .select()
           .single();
         if (error) throw error;
@@ -139,8 +141,16 @@ export default function App() {
         if (!blob) throw new Error('download failed');
         const text = await readText(blob);
         localBlobs.current.delete(next.image_path!);
-        await update(next.id, { ocr_text: text });
-        if (text) flash(`Read ${text.split(/\s+/).length} words from image`);
+        // A flyer, ticket or invite: if the image names a day and the note has no date yet, book it.
+        const ev = text && !next.due_at ? findEventDate(text) : null;
+        if (ev) {
+          const tags = next.tags.includes('event') ? next.tags : [...next.tags, 'event'];
+          await update(next.id, { ocr_text: text, ...ev, kind: 'event', tags, remind_offsets: null });
+          flash(`Added to calendar · ${new Date(ev.due_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', ...(ev.all_day ? {} : { hour: 'numeric', minute: '2-digit' }) })} · pick a reminder`);
+        } else {
+          await update(next.id, { ocr_text: text });
+          if (text) flash(`Read ${text.split(/\s+/).length} words from image`);
+        }
       } catch (e) {
         console.warn('ocr', e);
         ocrFailed.current.add(next.id);
