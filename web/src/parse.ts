@@ -56,3 +56,28 @@ export function parseInput(raw: string, now: Date = new Date()): Parsed {
 
   return { body: text || raw.trim(), tags: [...tags], url, due_at, all_day, kind };
 }
+
+/**
+ * Date of an event in text read from an image (a flyer, ticket or invite), or null.
+ * Stricter than parseInput because OCR text is noisy: the match must name a day (a date or weekday),
+ * not just a time or a bare number, and must fall between yesterday and about a year ahead.
+ */
+export function findEventDate(text: string, now: Date = new Date()): { due_at: string; all_day: boolean } | null {
+  const results = chrono.parse(text, now, { forwardDate: true });
+  const min = now.getTime() - 864e5;
+  const max = now.getTime() + 400 * 864e5;
+  for (const r of results) {
+    const s = r.start;
+    if (!s.isCertain('day') && !s.isCertain('weekday')) continue;
+    if (/^(now|today|tomorrow|yesterday|tonight)$/i.test(r.text.trim())) continue;
+    const d = s.date();
+    // Flyers often put the time on its own line ("Doors 7:00 PM"): borrow the first time-only match.
+    const time = s.isCertain('hour') ? s : results.find((t) => t.start.isCertain('hour') && !t.start.isCertain('day'))?.start;
+    const all_day = !time;
+    if (time) d.setHours(time.get('hour') ?? 9, time.get('minute') ?? 0, 0, 0);
+    else d.setHours(9, 0, 0, 0);
+    if (d.getTime() < min || d.getTime() > max) continue;
+    return { due_at: d.toISOString(), all_day };
+  }
+  return null;
+}

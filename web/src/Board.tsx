@@ -6,8 +6,8 @@ import { parseInput } from './parse';
 
 interface Props {
   items: Item[];
-  onAdd: (raw: string, source?: string, remind?: number[]) => Promise<boolean>;
-  onAddImage: (img: Blob, caption: string, source?: string, remind?: number[]) => Promise<boolean>;
+  onAdd: (raw: string, source?: string, remind?: number[] | null) => Promise<boolean>;
+  onAddImage: (img: Blob, caption: string, source?: string, remind?: number[] | null) => Promise<boolean>;
   onUpdate: (id: string, patch: Partial<Item>) => void;
   onRemove: (id: string) => void;
 }
@@ -19,7 +19,8 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
-  const [remind, setRemind] = useState<number[]>([0]);
+  const [remind, setRemind] = useState<number[] | null>(null);
+  const [nudge, setNudge] = useState(false);
   // Live preview: show the detected date and notification choices while typing.
   const preview = useMemo(() => (draft.trim() ? parseInput(draft) : null), [draft]);
 
@@ -30,7 +31,7 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
     const caption = draft.trim();
     setDraft('');
     for (const f of imgs) await onAddImage(f, caption, 'app', remind);
-    setRemind([0]);
+    setRemind(null);
   }
 
   useEffect(() => {
@@ -65,13 +66,16 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.created_at.localeCompare(a.created_at));
   }, [items, q, tag]);
 
+  const needsReminder = Boolean(preview?.due_at) && remind === null;
+
   async function submit() {
     const text = draft.trim();
     if (!text) return;
+    if (needsReminder) { setNudge(true); window.setTimeout(() => setNudge(false), 600); return; }
     setDraft('');
     const ok = await onAdd(text, 'app', remind);
     if (!ok) setDraft(text);
-    else setRemind([0]);
+    else setRemind(null);
     inputRef.current?.focus();
   }
 
@@ -100,11 +104,12 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
         <input ref={fileRef} type="file" accept="image/*" multiple hidden
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
         <button title="Add image (or paste / drop one)" onClick={() => fileRef.current?.click()}>🖼</button>
-        <button className="primary" onClick={submit} disabled={!draft.trim()}>Add</button>
+        <button className="primary" onClick={submit} disabled={!draft.trim() || needsReminder}
+          title={needsReminder ? 'Pick when to be reminded first' : undefined}>Add</button>
       </div>
 
       {preview?.due_at && (
-        <div className="preview">
+        <div className={nudge ? 'preview nudge' : 'preview'}>
           <span className="when">
             {preview.kind === 'deadline' ? 'Due ' : preview.kind === 'reminder' ? 'Remind ' : '📅 '}
             {fmtDue(preview)}
@@ -135,7 +140,8 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
               <li key={i.id} className={new Date(i.due_at!) < new Date() ? 'overdue' : ''}>
                 <button className="tick" title="Mark done" onClick={() => onUpdate(i.id, { done: true })}>○</button>
                 <span className="when">{fmtDue(i)}</span>
-                <span className="what">{i.body.split('\n')[0] || 'Image'}</span>
+                <span className="what">{i.body.split('\n')[0] || i.ocr_text?.split('\n')[0] || 'Image'}</span>
+                {i.remind_offsets === null && <span className="needs" title="No reminder chosen yet">🔔?</span>}
               </li>
             ))}
           </ul>

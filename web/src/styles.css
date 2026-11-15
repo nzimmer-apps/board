@@ -106,6 +106,15 @@ a { color: var(--accent); word-break: break-all; }
 .remind { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .remind .chip { font-size: 11px; padding: 2px 8px; text-transform: none; }
 .small { font-size: 11px; }
+.remind-label { color: var(--muted); }
+.remind.required .remind-label { color: var(--warn); }
+.preview.nudge .remind { animation: nudge .5s; }
+@keyframes nudge { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+.ask-remind { margin-top: 8px; padding: 8px 10px; border: 1px solid #5a4316; border-radius: 8px; background: #241b0b; font-family: system-ui, sans-serif; font-size: 13px; color: var(--warn); display: grid; gap: 6px; }
+.ask-remind .row { gap: 6px; }
+.ask-remind .chip { text-transform: none; font-size: 12px; padding: 3px 10px; color: var(--text); }
+.upcoming .needs { font-size: 12px; color: var(--warn); white-space: nowrap; }
+
 
 /* Touch screens: bigger hit areas without bigger boxes.
    Small visual controls (icons, tags) get an invisible hit area via padding + negative margin or ::after,
@@ -149,7 +158,10 @@ a { color: var(--accent); word-break: break-all; }
   .edit .row .danger { flex: 0 0 auto; margin-left: auto; }
 
   .remind { gap: 8px; width: 100%; }
-  .remind > .muted:first-child { flex-basis: 100%; }
+  .remind > .remind-label { flex-basis: 100%; }
+  .ask-remind { font-size: 14px; }
+  .ask-remind .row { gap: 8px; }
+  .ask-remind .chip { font-size: 13px; padding: 8px 12px; }
   .remind .chip { font-size: 13px; padding: 6px 12px; }
 
   .cal-head button { min-width: 44px; min-height: 44px; }
