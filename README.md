@@ -5,10 +5,10 @@ A personal capture board: send a thought from anywhere, find it later. `#tags` b
 | Part | Where | How it's delivered |
 | --- | --- | --- |
 | Web app (PWA) | `web/` | GitHub Pages, deployed on every push to `main` |
-| Android | Installed PWA | Chrome → ⋮ → **Add to Home screen / Install app**. Then **Board** shows up in the share sheet |
-| Windows | Installed PWA | Chrome/Edge → install icon in the address bar |
-| Chrome extension | `extension/` | `chrome://extensions` → Developer mode → **Load unpacked** → pick this folder |
-| Database | `supabase/001_init.sql` | Run once in Supabase → SQL Editor |
+| Android | `android/` (Capacitor) | `Board-android.apk` on the [latest release](https://github.com/nzimmer-apps/board/releases/latest) |
+| Windows | `src-tauri/` (Tauri) | `Board-windows-setup.exe` / `Board-windows.msi` on the latest release |
+| Chrome extension | `extension/` | `Board-extension.zip` on the latest release → unzip → `chrome://extensions` → Developer mode → **Load unpacked** |
+| Database | `supabase/migrations/` | `npx supabase db push` (see CLAUDE.md) |
 
 ## Writing items
 

@@ -2,7 +2,7 @@ name: Build Android + Windows apps
 on:
   push:
     branches: [main]
-    paths: ['web/**', 'android/**', 'src-tauri/**', '.github/workflows/apps.yml']
+    paths: ['web/**', 'android/**', 'src-tauri/**', 'extension/**', '.github/workflows/apps.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -77,8 +77,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: 'Board-windows*' }
 
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip extension
+        working-directory: extension
+        run: zip -r "$GITHUB_WORKSPACE/Board-extension.zip" . -x '.*'
+      - uses: actions/upload-artifact@v4
+        with: { name: extension, path: Board-extension.zip }
+
   release:
-    needs: [android, windows]
+    needs: [android, windows, extension]
     if: always() && needs.windows.result == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -92,5 +102,6 @@ jobs:
           make_latest: true
           body: |
             **Android:** download `Board-android.apk` on your phone and open it (allow "install unknown apps" for your browser the first time). Later versions install over the top — no need to uninstall.
+            **Chrome/Arc extension:** unzip `Board-extension.zip`, open `chrome://extensions`, turn on Developer mode → **Load unpacked** → pick the unzipped folder.
             **Windows:** run `Board-windows-setup.exe`. It's unsigned, so SmartScreen may say "Windows protected your PC" → **More info → Run anyway**. Ctrl+Alt+B opens quick-add from anywhere; closing the window keeps it in the tray.
           files: out/*

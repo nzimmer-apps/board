@@ -4,3 +4,6 @@ dist/
 *.zip
 board-android-signing-secrets*.txt
 *.jks
+*.keystore
+*KEYSTORE*.txt
+supabase/.temp/
