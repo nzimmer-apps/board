@@ -3,6 +3,7 @@ import type { Item } from './supabase';
 import Card, { fmtDue } from './Card';
 import ReminderPicker from './Reminders';
 import { parseInput } from './parse';
+import { describeRepeat, shownDate } from './recur';
 
 interface Props {
   items: Item[];
@@ -49,8 +50,10 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
   const upcoming = useMemo(() => {
     const horizon = Date.now() + 7 * 864e5;
     return items
-      .filter((i) => i.due_at && !i.done && new Date(i.due_at).getTime() < horizon)
-      .sort((a, b) => a.due_at!.localeCompare(b.due_at!))
+      .map((i) => ({ i, at: shownDate(i) }))
+      .filter(({ i, at }) => at && !i.done && at.getTime() < horizon)
+      .sort((a, b) => a.at!.getTime() - b.at!.getTime())
+      .map(({ i }) => i)
       .slice(0, 8);
   }, [items]);
 
@@ -114,6 +117,7 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
             {preview.kind === 'deadline' ? 'Due ' : preview.kind === 'reminder' ? 'Remind ' : '📅 '}
             {fmtDue(preview)}
           </span>
+          {preview.repeat && <span className="repeat">🔁 {describeRepeat(preview.repeat, new Date(preview.due_at))}{preview.repeat_until ? ` until ${new Date(preview.repeat_until).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : ''}</span>}
           {preview.tags.length > 0 && <span className="muted">#{preview.tags.join(' #')}</span>}
           <ReminderPicker value={remind} onChange={setRemind} />
         </div>
@@ -137,8 +141,10 @@ export default function Board({ items, onAdd, onAddImage, onUpdate, onRemove }: 
           <h2>Next 7 days</h2>
           <ul>
             {upcoming.map((i) => (
-              <li key={i.id} className={new Date(i.due_at!) < new Date() ? 'overdue' : ''}>
-                <button className="tick" title="Mark done" onClick={() => onUpdate(i.id, { done: true })}>○</button>
+              <li key={i.id} className={shownDate(i)! < new Date() ? 'overdue' : ''}>
+                {i.repeat
+                  ? <span className="tick" title="Repeats">🔁</span>
+                  : <button className="tick" title="Mark done" onClick={() => onUpdate(i.id, { done: true })}>○</button>}
                 <span className="when">{fmtDue(i)}</span>
                 <span className="what">{i.body.split('\n')[0] || i.ocr_text?.split('\n')[0] || 'Image'}</span>
                 {i.remind_offsets === null && <span className="needs" title="No reminder chosen yet">🔔?</span>}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Item } from './supabase';
 import Card from './Card';
+import { occurrences } from './recur';
 
 interface Props {
   items: Item[];
@@ -16,21 +17,24 @@ export default function Calendar({ items, onUpdate, onRemove }: Props) {
   const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [picked, setPicked] = useState<Date>(today);
 
-  const byDay = useMemo(() => {
-    const m = new Map<string, Item[]>();
-    items.filter((i) => i.due_at).forEach((i) => {
-      const k = key(new Date(i.due_at!));
-      m.set(k, [...(m.get(k) ?? []), i]);
-    });
-    m.forEach((list) => list.sort((a, b) => a.due_at!.localeCompare(b.due_at!)));
-    return m;
-  }, [items]);
-
   const cells = useMemo(() => {
     const first = new Date(month);
     first.setDate(1 - first.getDay());
     return Array.from({ length: 42 }, (_, i) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + i));
   }, [month]);
+
+  // Each day's notes, with repeating notes placed on every date they fall on in the visible weeks.
+  const byDay = useMemo(() => {
+    const m = new Map<string, { i: Item; at: Date }[]>();
+    const from = cells[0].getTime();
+    const to = new Date(cells[41].getFullYear(), cells[41].getMonth(), cells[41].getDate(), 23, 59).getTime();
+    items.forEach((i) => occurrences(i, from, to, 60).forEach((at) => {
+      const k = key(at);
+      m.set(k, [...(m.get(k) ?? []), { i, at }]);
+    }));
+    m.forEach((list) => list.sort((a, b) => a.at.getTime() - b.at.getTime()));
+    return new Map([...m].map(([k, v]) => [k, v.map((x) => x.i)]));
+  }, [items, cells]);
 
   const dayItems = byDay.get(key(picked)) ?? [];
   const shift = (n: number) => setMonth(new Date(month.getFullYear(), month.getMonth() + n, 1));
@@ -57,7 +61,7 @@ export default function Calendar({ items, onUpdate, onRemove }: Props) {
             <button key={d.toISOString()} className={cls} onClick={() => setPicked(d)}>
               <span className="num">{d.getDate()}</span>
               {list.slice(0, 3).map((i) => (
-                <span key={i.id} className={`pill ${i.kind ?? ''} ${i.done ? 'done' : ''}`}>{i.body.split('\n')[0] || 'Image'}</span>
+                <span key={i.id} className={`pill ${i.kind ?? ''} ${i.done ? 'done' : ''}`}>{i.repeat ? '🔁 ' : ''}{i.body.split('\n')[0] || i.ocr_text?.split('\n')[0] || 'Image'}</span>
               ))}
               {list.length > 3 && <span className="more">+{list.length - 3}</span>}
             </button>

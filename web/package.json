@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "node --experimental-strip-types --test src/parse.test.ts"
+    "build:extension": "esbuild src/parse.ts --bundle --format=iife --global-name=BoardParse --minify --target=chrome110 --outfile=../extension/parse.js",
+    "test": "node --experimental-strip-types --test src/parse.test.ts src/recur.test.ts"
   },
   "dependencies": {
     "@capacitor/android": "^7.6.10",

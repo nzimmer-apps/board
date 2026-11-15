@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { Repeat } from './recur';
 
 // Both values are public by design (the anon key only works within Row Level Security).
 // Set them in config.json at build time via the Pages workflow, or in web/.env.local for dev.
@@ -29,4 +30,8 @@ export interface Item {
   ocr_text: string | null;
   /** Minutes before due_at; [] = no reminder; null = not chosen yet (the card asks). */
   remind_offsets: number[] | null;
+  /** Repeat rule; due_at is the occurrence it counts from. */
+  repeat: Repeat | null;
+  /** Last day of a repeating series, or null for no end. */
+  repeat_until: string | null;
 }

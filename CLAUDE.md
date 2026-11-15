@@ -46,5 +46,7 @@ no-newline file through cmd instead: `cmd /c "gh secret set NAME -R nzimmer-apps
   applied migration, and never change the schema by hand in the SQL editor. Name files
   `YYYYMMDDHHMMSS_description.sql` (`npx supabase migration new <description>` creates one).
   One-time setup on a new machine: `npx supabase login`, then `npx supabase link --project-ref tvgtvkzydawfyfznzvao`.
-- Keep `web/src/parse.ts` and `extension/parse.js` behaviour in sync. Parser tests live in `web/src/parse.test.ts`.
+- Keep `web/src/parse.ts` and `extension/parse.js` behaviour in sync: `extension/parse.js` is a bundle of
+  `parse.ts`, so after changing the parser run `cd web && npm run build:extension`. Parser tests live in
+  `web/src/parse.test.ts`; repeat-rule tests in `web/src/recur.test.ts`.
 - `keepalive.yml` calls `public.ping()` daily so the free Supabase project doesn't pause. Don't drop that function.
