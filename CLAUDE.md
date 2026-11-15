@@ -37,6 +37,8 @@ Never commit an `sb_secret_…` key.
 Signing secrets in GitHub: `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD` (alias `board`).
 The local copy lives outside the repo in `%USERPROFILE%\.board-signing\`. Never commit, print or paste signing
 material. `.gitignore` covers `*.jks`, `*.keystore` and `*KEYSTORE*.txt`.
+On Windows PowerShell 5.1, don't pipe a value into `gh secret set` (it appends CRLF). Redirect a
+no-newline file through cmd instead: `cmd /c "gh secret set NAME -R nzimmer-apps/board < file"`.
 
 ## Rules
 
