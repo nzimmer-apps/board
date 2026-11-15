@@ -69,3 +69,14 @@ test('image text without a day is not an event', () => {
 test('image text with a past dated year is not an event', () => {
   assert.equal(findEventDate('Receipt 03/14/2025 Total $4.20', NOW), null);
 });
+
+test('noisy screenshot OCR: real date wins over relative words and stray digits', () => {
+  const ocr = 'Top events for you\n[ A 7 + pe\namaa Wisconsin Grown<Up! \\* 4 . |\n+ (=) — 2 Hai = \\ or) * 5\nR 7 a= + Two Day Event Ne ad x 2\nJANUARY 23 + 24\nJ The Sylvee « Madi';
+  const e = findEventDate(ocr, NOW);
+  assert.ok(e);
+  const d = new Date(e.due_at);
+  assert.equal(d.getFullYear(), 2027);
+  assert.equal(d.getMonth(), 0);
+  assert.equal(d.getDate(), 23);
+  assert.equal(e.all_day, true); // "7 a" is noise, not 7am
+});

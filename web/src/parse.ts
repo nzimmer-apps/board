@@ -57,27 +57,35 @@ export function parseInput(raw: string, now: Date = new Date()): Parsed {
   return { body: text || raw.trim(), tags: [...tags], url, due_at, all_day, kind };
 }
 
+const MONTH_RE = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\b/i;
+const WEEKDAY_RE = /\b(mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(day)?\b/i;
+const NUMERIC_DATE_RE = /\b\d{1,2}[/.-]\d{1,2}([/.-]\d{2,4})?\b/;
+const CLOCK_RE = /\d(:\d{2}|\s?[ap]\.?m\b)/i;
+
 /**
  * Date of an event in text read from an image (a flyer, ticket or invite), or null.
- * Stricter than parseInput because OCR text is noisy: the match must name a day (a date or weekday),
- * not just a time or a bare number, and must fall between yesterday and about a year ahead.
+ * OCR text is noisy, so this is stricter than parseInput:
+ * - each line is read on its own, so stray digits on one line don't merge with a date on the next;
+ * - the date must be written out (a month name, a weekday or 11/21), not relative ("two day", "in 3 days");
+ * - a time must look like a clock time (7:00, 7pm), and one on its own line is joined to the date;
+ * - the date must fall between yesterday and about a year ahead.
  */
 export function findEventDate(text: string, now: Date = new Date()): { due_at: string; all_day: boolean } | null {
-  const results = chrono.parse(text, now, { forwardDate: true });
+  const lines = text.split(/\n+/);
+  const found = lines.flatMap((l) => chrono.parse(l, now, { forwardDate: true }));
+  const clock = found.find((r) => r.start.isCertain('hour') && CLOCK_RE.test(r.text))?.start;
   const min = now.getTime() - 864e5;
   const max = now.getTime() + 400 * 864e5;
-  for (const r of results) {
+  for (const r of found) {
     const s = r.start;
     if (!s.isCertain('day') && !s.isCertain('weekday')) continue;
-    if (/^(now|today|tomorrow|yesterday|tonight)$/i.test(r.text.trim())) continue;
+    if (!MONTH_RE.test(r.text) && !WEEKDAY_RE.test(r.text) && !NUMERIC_DATE_RE.test(r.text)) continue;
     const d = s.date();
-    // Flyers often put the time on its own line ("Doors 7:00 PM"): borrow the first time-only match.
-    const time = s.isCertain('hour') ? s : results.find((t) => t.start.isCertain('hour') && !t.start.isCertain('day'))?.start;
-    const all_day = !time;
+    const time = s.isCertain('hour') && CLOCK_RE.test(r.text) ? s : clock;
     if (time) d.setHours(time.get('hour') ?? 9, time.get('minute') ?? 0, 0, 0);
     else d.setHours(9, 0, 0, 0);
     if (d.getTime() < min || d.getTime() > max) continue;
-    return { due_at: d.toISOString(), all_day };
+    return { due_at: d.toISOString(), all_day: !time };
   }
   return null;
 }
