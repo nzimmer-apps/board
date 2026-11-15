@@ -37,10 +37,13 @@ jobs:
         working-directory: android
         env:
           BUILD_NUMBER: ${{ github.run_number }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: board
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/board.jks"
+          # Strip stray CR/LF/spaces (secrets set from Windows can pick up a trailing CRLF).
+          printf '%s' "$KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/board.jks"
+          export ANDROID_KEYSTORE_PASSWORD="$(printf '%s' "$KEYSTORE_PW" | tr -d '\r\n')"
           export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/board.jks"
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
