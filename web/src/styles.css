@@ -128,41 +128,41 @@ a { color: var(--accent); word-break: break-all; }
 
   .top { padding: 8px 0; gap: 8px; }
   .top nav { margin-left: 4px; gap: 4px; }
-  .tab { min-height: 44px; padding: 8px 14px; }
+  .tab { min-height: 46px; padding: 8px 16px; font-size: 17px; }
   .capture textarea { min-height: 84px; }
   .capture button { min-width: 52px; }
 
   .chips { gap: 8px; }
-  .chip { min-height: 40px; font-size: 13px; padding: 8px 14px; }
+  .chip { min-height: 44px; font-size: 14px; padding: 10px 16px; }
 
   .upcoming { padding: 6px 12px 6px 4px; }
   .upcoming h2 { margin: 6px 0 2px 10px; }
   .upcoming ul { gap: 0; }
   .upcoming li { align-items: center; min-height: 44px; font-size: 15px; }
   .upcoming .when { font-size: 13px; }
-  .tick { min-width: 44px; min-height: 44px; padding: 0; font-size: 18px; }
+  .tick { min-width: 48px; min-height: 48px; padding: 0; font-size: 22px; }
 
   .card { padding: 6px 14px 12px; font-size: 15px; }
   .card .meta { font-size: 12px; }
   .card .actions { gap: 0; margin-right: -10px; }
-  .card .actions button { min-width: 44px; min-height: 44px; padding: 0; font-size: 18px; }
+  .card .actions button { min-width: 48px; min-height: 48px; padding: 0; font-size: 22px; }
   .tags { gap: 8px; margin-top: 0; }
-  .tag { position: relative; min-height: 0; font-size: 11px; padding: 3px 8px; }
+  .tag { position: relative; min-height: 0; font-size: 13px; padding: 5px 10px; }
   .tag::after { content: ''; position: absolute; inset: -8px -4px; } /* hit area */
   .due { font-size: 13px; }
   .ocr { font-size: 13px; }
 
   .edit { gap: 12px; }
   .edit label { font-size: 13px; gap: 6px; }
-  .edit .row button { flex: 1; min-height: 46px; }
+  .edit .row button { flex: 1; min-height: 50px; font-size: 17px; }
   .edit .row .danger { flex: 0 0 auto; margin-left: auto; }
 
   .remind { gap: 8px; width: 100%; }
   .remind > .remind-label { flex-basis: 100%; }
   .ask-remind { font-size: 14px; }
   .ask-remind .row { gap: 8px; }
-  .ask-remind .chip { font-size: 13px; padding: 8px 12px; }
-  .remind .chip { font-size: 13px; padding: 6px 12px; }
+  .ask-remind .chip { font-size: 14px; padding: 10px 14px; min-height: 44px; }
+  .remind .chip { font-size: 14px; padding: 10px 14px; min-height: 44px; }
 
   .cal-head button { min-width: 44px; min-height: 44px; }
   .cal-head h2 { min-width: 0; flex: 1; font-size: 17px; }
