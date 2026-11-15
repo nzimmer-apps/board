@@ -80,3 +80,68 @@ test('noisy screenshot OCR: real date wins over relative words and stray digits'
   assert.equal(d.getDate(), 23);
   assert.equal(e.all_day, true); // "7 a" is noise, not 7am
 });
+
+// ---- repeating ----
+test('"every Tuesday 7pm" repeats weekly from the next Tuesday', () => {
+  const p = parseInput('darts league every tuesday 7pm #darts', NOW);
+  assert.equal(p.repeat, 'weekly');
+  const d = new Date(p.due_at!);
+  assert.equal(d.getDay(), 2);
+  assert.equal(d.getHours(), 19);
+  assert.deepEqual(p.tags, ['darts']);
+});
+
+test('plural weekday "tuesdays" is weekly', () => {
+  const p = parseInput('darts tuesdays 7pm', NOW);
+  assert.equal(p.repeat, 'weekly');
+  assert.equal(new Date(p.due_at!).getDay(), 2);
+});
+
+test('"every other friday" is biweekly', () => {
+  const p = parseInput('cleaning every other friday 10am', NOW);
+  assert.equal(p.repeat, 'biweekly');
+  assert.equal(new Date(p.due_at!).getDay(), 5);
+});
+
+test('"2nd friday of the month" works out the next one', () => {
+  const p = parseInput('board game night 2nd friday of the month 6pm', NOW); // NOW is Thu Nov 12; Nov 13 is the 2nd Fri
+  assert.equal(p.repeat, 'monthly-nth');
+  const d = new Date(p.due_at!);
+  assert.equal(d.getMonth(), 10);
+  assert.equal(d.getDate(), 13);
+  assert.equal(d.getHours(), 18);
+});
+
+test('"last saturday of every month"', () => {
+  const p = parseInput('market last saturday of every month', NOW);
+  assert.equal(p.repeat, 'monthly-last');
+  assert.equal(new Date(p.due_at!).getDate(), 28);
+  assert.equal(p.all_day, true);
+});
+
+test('"rent due the 1st every month" is a monthly deadline', () => {
+  const p = parseInput('rent due the 1st every month', NOW);
+  assert.equal(p.repeat, 'monthly');
+  assert.equal(p.kind, 'deadline');
+  assert.equal(new Date(p.due_at!).getDate(), 1);
+});
+
+test('"until" ends the series and is not the start date', () => {
+  const p = parseInput('league every wednesday 7pm until march 31', NOW);
+  assert.equal(p.repeat, 'weekly');
+  assert.equal(new Date(p.due_at!).getDay(), 3);
+  const u = new Date(p.repeat_until!);
+  assert.equal(u.getMonth(), 2);
+  assert.equal(u.getDate(), 31);
+});
+
+test('no repeat words, no repeat; repeat without a date is dropped', () => {
+  assert.equal(parseInput('call John fri 3pm', NOW).repeat, null);
+  assert.equal(parseInput('weekly ideas list', NOW).repeat, null);
+});
+
+test('image text: full weekday names like Saturday count as a written date', () => {
+  const e = findEventDate('Open house\nSaturday 10am', NOW);
+  assert.ok(e);
+  assert.equal(new Date(e.due_at).getDay(), 6);
+});

@@ -36,18 +36,23 @@ export async function onShared(
   return () => h.remove();
 }
 
+import { occurrences } from './recur';
 // ---------- Reminders ----------
 
-// One entry per (item, chosen offset): fires at due_at minus the offset.
-interface Alert { i: Item; t: number; off: number; key: string }
+// One entry per (item, occurrence, chosen offset): fires at the occurrence minus the offset.
+// Repeating notes contribute each occurrence in the window.
+interface Alert { i: Item; at: number; t: number; off: number; key: string }
+const MAX_OFFSET = 10080 * 60e3; // the largest choice, 1 week
 const alerts = (items: Item[], fromMs: number, toMs: number): Alert[] =>
   items
-    .filter((i) => i.due_at && !i.done && !i.archived)
+    .filter((i) => i.due_at && !i.done && !i.archived && i.remind_offsets?.length)
     .flatMap((i) =>
-      (i.remind_offsets ?? []).map((off) => {
-        const t = new Date(i.due_at!).getTime() - off * 60e3;
-        return { i, t, off, key: `${i.id}:${off}` };
-      }),
+      occurrences(i, fromMs, toMs + MAX_OFFSET, 100).flatMap((occ) =>
+        i.remind_offsets!.map((off) => {
+          const at = occ.getTime();
+          return { i, at, t: at - off * 60e3, off, key: `${i.id}:${off}${i.repeat ? `:${at}` : ''}` };
+        }),
+      ),
     )
     .filter(({ t }) => t > fromMs && t < toMs)
     .sort((a, b) => a.t - b.t);
@@ -57,7 +62,7 @@ const label = (i: Item) =>
 
 const when = (a: Alert) => {
   if (a.off === 0) return a.i.kind === 'deadline' ? 'due now' : 'now';
-  const d = new Date(a.i.due_at!);
+  const d = new Date(a.at);
   const sameDay = new Date(a.t).toDateString() === d.toDateString();
   return 'at ' + d.toLocaleString([], sameDay ? { hour: 'numeric', minute: '2-digit' } : { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 };

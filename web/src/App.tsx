@@ -7,6 +7,7 @@ import Board from './Board';
 import Calendar from './Calendar';
 import { onShared, syncReminders, registerHotkey } from './native';
 import { shrink, upload, readText, download, removeImage } from './images';
+import { describeRepeat } from './recur';
 
 type View = 'board' | 'calendar';
 
@@ -31,7 +32,7 @@ export default function App() {
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from('items')
-      .select('id,body,url,tags,source,due_at,all_day,kind,done,pinned,archived,created_at,image_path,ocr_text,remind_offsets')
+      .select('id,body,url,tags,source,due_at,all_day,kind,done,pinned,archived,created_at,image_path,ocr_text,remind_offsets,repeat,repeat_until')
       .eq('archived', false)
       .order('created_at', { ascending: false })
       .limit(1000);
@@ -74,7 +75,8 @@ export default function App() {
       setItems((xs) => xs.map((x) => (x.id === optimistic.id ? (data as Item) : x)));
       const bell = !p.due_at ? '' : p.remind_offsets === null ? ' · pick a reminder' : p.remind_offsets.length ? ' 🔔' : '';
       const when = p.due_at ? ` · ${new Date(p.due_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', ...(p.all_day ? {} : { hour: 'numeric', minute: '2-digit' }) })}` : '';
-      flash(`Saved${p.tags.length ? ` to #${p.tags.join(' #')}` : ''}${when}${bell}`);
+      const rep = p.repeat && p.due_at ? ` · 🔁 ${describeRepeat(p.repeat, new Date(p.due_at))}` : '';
+      flash(`Saved${p.tags.length ? ` to #${p.tags.join(' #')}` : ''}${when}${rep}${bell}`);
       return true;
     },
     [flash],
