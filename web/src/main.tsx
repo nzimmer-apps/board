@@ -2,7 +2,13 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './styles.css';
+import './features.css';
 import { isNativeApp } from './native';
+import { applyTheme, getTheme } from './theme';
+import { APP_NAME } from './supabase';
+
+applyTheme(getTheme());
+document.title = APP_NAME;
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

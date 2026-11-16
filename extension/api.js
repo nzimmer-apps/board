@@ -20,10 +20,10 @@ const api = {
   },
   signIn: (email, password) => api.auth('password', { email, password }),
   signOut: () => chrome.storage.local.remove('session'),
-  async add(raw, source = 'extension') {
+  /** Insert one row, or several (a weekly schedule with different times is one row per time). */
+  async insert(rows) {
     const s = await api.session();
     if (!s) throw new Error('Sign in first (click the Board icon).');
-    const p = BoardParse.parseInput(raw);
     const r = await fetch(`${BOARD_CONFIG.url}/rest/v1/items`, {
       method: 'POST',
       headers: {
@@ -32,10 +32,15 @@ const api = {
         'Content-Type': 'application/json',
         Prefer: 'return=minimal',
       },
-      body: JSON.stringify({ ...p, source }),
+      body: JSON.stringify(rows),
     });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || `Save failed (${r.status})`);
-    return p;
+  },
+  async add(raw, source = 'extension') {
+    const rows = BoardParse.parseRows(raw).map((p) => ({ ...p, source }));
+    // PostgREST wants every row of a bulk insert to have the same keys.
+    await api.insert(rows.length > 1 ? rows.map((p) => ({ remind_offsets: [0], ...p })) : rows[0]);
+    return rows[0];
   },
   /** Image from a web page → shrink to ≤1600px JPEG → private bucket → item. The app reads its text (OCR) later. */
   async addImage(srcUrl, caption = '', source = 'extension') {
@@ -61,7 +66,7 @@ const api = {
       body: blob,
     });
     if (!up.ok) throw new Error((await up.json().catch(() => ({}))).message || `Upload failed (${up.status})`);
-    const p = BoardParse.parseInput(caption);
+    const [p] = BoardParse.parseRows(caption);
     const r = await fetch(`${BOARD_CONFIG.url}/rest/v1/items`, {
       method: 'POST',
       headers: { apikey: BOARD_CONFIG.key, Authorization: `Bearer ${s.access_token}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },

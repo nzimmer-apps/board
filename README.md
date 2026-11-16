@@ -1,12 +1,20 @@
-# Board
+# Board Dev
+
+> Development copy of [Board](https://github.com/nzimmer-apps/board). Separate database, separate app ids, separate
+> site (https://nzimmer-apps.github.io/board-dev/), so it installs next to the real app. New features land here first.
+
+**New here:** colour themes · repeating items ("darts every mon 7pm") · any number of warnings per event, including
+custom ones ("notify 2 hours and 8 hours before") · voice notes and PDFs · a confirm step before a date found in a
+screenshot, PDF, voice note or event link goes on the calendar · Archive screen · passed events offer Archive / Done /
+Delete · Tags screen (rename, merge, colour, delete) · export to JSON, CSV, Markdown or .ics.
 
 A personal capture board: send a thought from anywhere, find it later. `#tags` become categories, dates like "fri 3pm" or "due Dec 1" land on the calendar, images are read on-device (OCR) so their text is searchable, and each dated note can notify you at the time or 15m / 1h / 1d / 1w before.
 
 | Part | Where | How it's delivered |
 | --- | --- | --- |
-| Web app (PWA) | `web/` (React + Vite + TS) | GitHub Pages, https://nzimmer-apps.github.io/board/, deployed on every push to `main` that touches `web/` |
-| Android | `android/` (Capacitor 7) | `Board-android.apk` on the [latest release](https://github.com/nzimmer-apps/board/releases/latest). Shows up in the share sheet; local notifications |
-| Windows | `src-tauri/` (Tauri 2) | `Board-windows-setup.exe` / `Board-windows.msi` on the latest release. Tray icon, **Ctrl+Alt+B** quick-add, notifications |
+| Web app (PWA) | `web/` (React + Vite + TS) | GitHub Pages, https://nzimmer-apps.github.io/board-dev/, deployed on every push to `main` that touches `web/` |
+| Android | `android/` (Capacitor 7) | `Board-android.apk` on the [latest release](https://github.com/nzimmer-apps/board-dev/releases/latest). Shows up in the share sheet; local notifications |
+| Windows | `src-tauri/` (Tauri 2) | `Board-windows-setup.exe` / `Board-windows.msi` on the latest release. Tray icon, **Ctrl+Alt+D** quick-add, notifications |
 | Chrome/Arc extension | `extension/` (MV3, plain JS) | `Board-extension.zip` on the latest release |
 | Database | `supabase/migrations/` | `npx supabase db push` (see [Database changes](#database-changes)) |
 
@@ -48,7 +56,7 @@ To change the schema, add a new file and push it. Never edit an applied migratio
 
 ```
 npx supabase login                                         # once per machine
-npx supabase link --project-ref tvgtvkzydawfyfznzvao       # once per clone
+npx supabase link --project-ref isznsbnczhpomrdvvzom       # once per clone
 npx supabase migration new <description>                   # creates supabase/migrations/<timestamp>_<description>.sql
 npx supabase db push
 ```

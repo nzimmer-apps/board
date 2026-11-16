@@ -20,12 +20,12 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let open = MenuItem::with_id(app, "open", "Open Board", true, None::<&str>)?;
+            let open = MenuItem::with_id(app, "open", "Open Board Dev", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("Board (Ctrl+Alt+B)")
+                .tooltip("Board Dev (Ctrl+Alt+D)")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Board</string>
-    <string name="title_activity_main">Board</string>
-    <string name="package_name">com.nzimmerapps.board</string>
-    <string name="custom_url_scheme">com.nzimmerapps.board</string>
+    <string name="app_name">Board Dev</string>
+    <string name="title_activity_main">Board Dev</string>
+    <string name="package_name">com.nzimmerapps.board.dev</string>
+    <string name="custom_url_scheme">com.nzimmerapps.board.dev</string>
 </resources>

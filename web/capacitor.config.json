@@ -1,6 +1,6 @@
 {
-  "appId": "com.nzimmerapps.board",
-  "appName": "Board",
+  "appId": "com.nzimmerapps.board.dev",
+  "appName": "Board Dev",
   "webDir": "dist",
   "android": {
     "path": "../android",

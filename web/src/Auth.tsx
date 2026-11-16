@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from './supabase';
+import { supabase, APP_NAME } from './supabase';
 
 export default function Auth() {
   const [email, setEmail] = useState('');
@@ -24,7 +24,7 @@ export default function Auth() {
 
   return (
     <div className="auth">
-      <h1 className="brand">Board</h1>
+      <h1 className="brand">{APP_NAME}</h1>
       <p className="muted">Capture anything. Find it later.</p>
       <form onSubmit={submit}>
         <input type="email" placeholder="Email" autoComplete="email" value={email}

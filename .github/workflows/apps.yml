@@ -101,10 +101,11 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.2.${{ github.run_number }}
-          name: Board 0.2.${{ github.run_number }}
+          name: Board Dev 0.2.${{ github.run_number }}
           make_latest: true
           body: |
+            **This is the DEV build.** It installs next to the real Board (as "Board Dev") and uses its own separate database.
             **Android:** download `Board-android.apk` on your phone and open it (allow "install unknown apps" for your browser the first time). Later versions install over the top — no need to uninstall.
             **Chrome/Arc extension:** unzip `Board-extension.zip`, open `chrome://extensions`, turn on Developer mode → **Load unpacked** → pick the unzipped folder.
-            **Windows:** run `Board-windows-setup.exe`. It's unsigned, so SmartScreen may say "Windows protected your PC" → **More info → Run anyway**. Ctrl+Alt+B opens quick-add from anywhere; closing the window keeps it in the tray.
+            **Windows:** run `Board-windows-setup.exe`. It's unsigned, so SmartScreen may say "Windows protected your PC" → **More info → Run anyway**. Ctrl+Alt+D opens quick-add from anywhere; closing the window keeps it in the tray.
           files: out/*

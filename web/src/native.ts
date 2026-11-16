@@ -2,6 +2,7 @@
 // In a normal browser every function here is a no-op, so the web app is unchanged.
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { Item } from './supabase';
+import { occurrences } from './repeat';
 
 export const isAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -38,17 +39,22 @@ export async function onShared(
 
 // ---------- Reminders ----------
 
-// One entry per (item, chosen offset): fires at due_at minus the offset.
-interface Alert { i: Item; t: number; off: number; key: string }
+// One entry per (occurrence, chosen offset): fires at that occurrence's time minus the offset.
+interface Alert { i: Item; due: Date; t: number; off: number; key: string }
 const alerts = (items: Item[], fromMs: number, toMs: number): Alert[] =>
   items
     .filter((i) => i.due_at && !i.done && !i.archived)
-    .flatMap((i) =>
-      (i.remind_offsets ?? [0]).map((off) => {
-        const t = new Date(i.due_at!).getTime() - off * 60e3;
-        return { i, t, off, key: `${i.id}:${off}` };
-      }),
-    )
+    .flatMap((i) => {
+      const offs = i.remind_offsets ?? [0];
+      const lead = Math.max(0, ...offs) * 60e3;
+      // Repeating items: every occurrence whose alerts could land in the window.
+      const dues = i.repeat
+        ? occurrences(new Date(i.due_at!), i.repeat, new Date(fromMs), new Date(toMs + lead), 80)
+        : [new Date(i.due_at!)];
+      return dues.flatMap((due) =>
+        offs.map((off) => ({ i, due, t: due.getTime() - off * 60e3, off, key: `${i.id}:${off}:${due.getTime()}` })),
+      );
+    })
     .filter(({ t }) => t > fromMs && t < toMs)
     .sort((a, b) => a.t - b.t);
 
@@ -57,13 +63,13 @@ const label = (i: Item) =>
 
 const when = (a: Alert) => {
   if (a.off === 0) return a.i.kind === 'deadline' ? 'due now' : 'now';
-  const d = new Date(a.i.due_at!);
+  const d = a.due;
   const sameDay = new Date(a.t).toDateString() === d.toDateString();
   return 'at ' + d.toLocaleString([], sameDay ? { hour: 'numeric', minute: '2-digit' } : { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
 
 const title = (a: Alert) => `${label(a.i)} ${when(a)}`;
-const text = (i: Item) => (i.body.split('\n')[0] || 'Image note').slice(0, 120);
+const text = (i: Item) => (i.body.split('\n')[0] || i.file_name || 'Image note').slice(0, 120);
 
 // Stable 31-bit int from the uuid, required by Android notification ids.
 const notifId = (id: string) => {
@@ -134,7 +140,8 @@ export async function registerHotkey(focusCapture: () => void) {
   if (!isTauri) return;
   const { register, isRegistered } = await import('@tauri-apps/plugin-global-shortcut');
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
-  const combo = 'CommandOrControl+Alt+B';
+  // The dev build uses its own shortcut so it can run next to the real app.
+  const combo = (import.meta.env.VITE_HOTKEY as string | undefined) || 'CommandOrControl+Alt+B';
   if (await isRegistered(combo)) return;
   await register(combo, async (e) => {
     if (e.state !== 'Pressed') return;
