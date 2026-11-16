@@ -119,13 +119,22 @@ function place(loc: J): string | null {
   if (Array.isArray(loc)) return place(loc[0]);
   if (/VirtualLocation/.test(String(loc['@type']))) return 'Online';
   const a = loc.address;
-  const addr = typeof a === 'string'
-    ? decode(a)
+  const name = text(loc.name) ?? '';
+  const parts = typeof a === 'string'
+    ? decode(a).split(/\s*,\s*/)
     : a && typeof a === 'object'
-      ? [a.streetAddress, a.addressLocality, a.addressRegion, a.postalCode].map((x) => text(x)).filter(Boolean).join(', ')
-      : '';
-  const name = text(loc.name);
-  return [name, addr && addr !== name ? addr : null].filter(Boolean).join(', ').slice(0, 300) || null;
+      ? [a.streetAddress, a.addressLocality, a.addressRegion, a.postalCode].map((x) => text(x) ?? '')
+      : [];
+  // Keep only address pieces the place name doesn't already spell out (avoids "Denver, CO 80204, Denver, CO").
+  const has = (hay: string, t: string) =>
+    new RegExp(`(^|\\W)${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\W|$)`, 'i').test(hay);
+  const extra: string[] = [];
+  for (const p of parts) {
+    const t = p.trim();
+    if (!t || has(name, t) || has(extra.join(', '), t)) continue;
+    extra.push(t);
+  }
+  return [name, ...extra].filter(Boolean).join(', ').slice(0, 300) || null;
 }
 
 function extract(html: string) {
