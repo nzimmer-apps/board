@@ -52,7 +52,7 @@ const SWAPS = [
   ['extension/config.js', `appUrl: '${SITE.prod}',`, `appUrl: '${SITE.dev}',`],
   ['extension/config.js', 'Row Level Security.\nconst BOARD_CONFIG', 'Row Level Security.\n// This is the DEV build: it talks to the board-dev database, not your real Board.\nconst BOARD_CONFIG'],
   ['extension/manifest.json', '"name": "Board — quick capture",', '"name": "Board Dev — quick capture",'],
-  ['extension/manifest.json', 'events to your Board.",', 'events to your Board (dev build).",'],
+  ['extension/manifest.json', ' to your Board.",', ' to your Board (dev build).",'],
 ];
 
 // A pair where one side contains the other would look "already set" in both directions.
