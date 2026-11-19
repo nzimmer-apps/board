@@ -10,9 +10,9 @@ import { COMMON_TAGS } from './theme';
 interface Props {
   items: Item[];
   colors: TagColors;
-  onAdd: (raw: string, source?: string, remind?: number[]) => Promise<boolean>;
-  onAddFile: (file: Blob, caption: string, source?: string, remind?: number[]) => Promise<boolean>;
-  onAddVoice: (audio: Blob, transcript: string, caption: string, seconds: number, remind?: number[]) => Promise<boolean>;
+  onAdd: (raw: string, source?: string, remind?: number[] | null) => Promise<boolean>;
+  onAddFile: (file: Blob, caption: string, source?: string, remind?: number[] | null) => Promise<boolean>;
+  onAddVoice: (audio: Blob, transcript: string, caption: string, seconds: number, remind?: number[] | null) => Promise<boolean>;
   onUpdate: (id: string, patch: Partial<Item>) => void;
   onRemove: (id: string) => void;
   onInsert?: (row: Partial<Item>) => Promise<boolean>;
@@ -33,17 +33,20 @@ export default function Board({ items, colors, jump, onAdd, onAddFile, onAddVoic
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
-  const [remind, setRemind] = useState<number[]>([0]);
+  const [remind, setRemind] = useState<number[] | null>(null);
+  const [nudge, setNudge] = useState(false);
   const [picking, setPicking] = useState(false);
   // Live preview: show the detected dates, repeats and notification choices while typing.
   const preview = useMemo(() => (draft.trim() ? parseAll(draft).filter((p) => p.due_at) : []), [draft]);
   const typedRemind = preview[0]?.remind ?? null;
+  // A reminder is never assumed: a dated note waits until one is picked (or "None").
+  const needsReminder = preview.length > 0 && !typedRemind && remind === null;
 
   const rec = useRecorder((audio, transcript, seconds) => {
     const caption = draft.trim();
     setDraft('');
     onAddVoice(audio, transcript, caption, seconds, remind);
-    setRemind([0]);
+    setRemind(null);
   }, onError);
 
   // Attachments use the typed text (if any) as their caption, so "#receipts" + a photo is filed under receipts.
@@ -53,7 +56,7 @@ export default function Board({ items, colors, jump, onAdd, onAddFile, onAddVoic
     const caption = draft.trim();
     setDraft('');
     for (const f of ok) await onAddFile(f, caption, 'app', remind);
-    setRemind([0]);
+    setRemind(null);
   }
 
   useEffect(() => {
@@ -107,7 +110,7 @@ export default function Board({ items, colors, jump, onAdd, onAddFile, onAddVoic
       .filter((i) => !tag || i.tags.includes(tag))
       .filter((i) => {
         if (!terms.length) return true;
-        const hay = `${i.body} ${i.ocr_text ?? ''} ${i.url ?? ''} ${i.location ?? ''} ${i.file_name ?? ''} ${i.tags.map((t) => '#' + t).join(' ')} ${fmtDue({ due_at: effectiveDue(i), all_day: i.all_day })} ${repeatLabel(i.repeat)}`.toLowerCase();
+        const hay = `${i.body} ${i.ocr_text ?? ''} ${i.url ?? ''} ${i.location ?? ''} ${i.file_name ?? ''} ${i.tags.map((t) => '#' + t).join(' ')} ${fmtDue({ due_at: effectiveDue(i), all_day: i.all_day })} ${repeatLabel(i.repeat, i.due_at)}`.toLowerCase();
         return terms.every((t) => hay.includes(t));
       })
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.created_at.localeCompare(a.created_at));
@@ -116,10 +119,11 @@ export default function Board({ items, colors, jump, onAdd, onAddFile, onAddVoic
   async function submit() {
     const text = draft.trim();
     if (!text) return;
+    if (needsReminder) { setNudge(true); window.setTimeout(() => setNudge(false), 600); return; }
     setDraft('');
     const ok = await onAdd(text, 'app', remind);
     if (!ok) setDraft(text);
-    else setRemind([0]);
+    else setRemind(null);
     inputRef.current?.focus();
   }
 
@@ -160,7 +164,8 @@ export default function Board({ items, colors, jump, onAdd, onAddFile, onAddVoic
           <button title="Quick tags" aria-pressed={picking} className={picking ? 'on' : ''} onClick={() => setPicking((p) => !p)}>#</button>
           <button title="Attach images, screenshots, PDFs or audio (or paste / drop them)" onClick={() => fileRef.current?.click()}>📎</button>
           {canRecord && !rec.recording && <button title="Record a voice note" onClick={rec.start}>🎙</button>}
-          <button className="primary" onClick={submit} disabled={!draft.trim()}>Add</button>
+          <button className="primary" onClick={submit} disabled={!draft.trim() || needsReminder}
+            title={needsReminder ? 'Pick when to be reminded first' : undefined}>Add</button>
         </div>
       </div>
 
@@ -181,12 +186,12 @@ export default function Board({ items, colors, jump, onAdd, onAddFile, onAddVoic
       )}
 
       {preview.length > 0 && (
-        <div className="preview">
+        <div className={nudge ? 'preview nudge' : 'preview'}>
           {preview.map((p, n) => (
             <span className="when" key={n}>
               {p.kind === 'deadline' ? 'Due ' : p.kind === 'reminder' ? 'Remind ' : '📅 '}
               {fmtDue(p)}
-              {p.repeat && ` · 🔁 ${repeatLabel(p.repeat)}`}
+              {p.repeat && ` · 🔁 ${repeatLabel(p.repeat, p.due_at)}`}
             </span>
           ))}
           {preview[0].tags.length > 0 && <span className="muted">#{preview[0].tags.join(' #')}</span>}
@@ -243,10 +248,11 @@ export default function Board({ items, colors, jump, onAdd, onAddFile, onAddVoic
             {upcoming.map(({ i, due }) => (
               <li key={i.id + due}>
                 {i.repeat
-                  ? <span className="tick" title={repeatLabel(i.repeat)}>🔁</span>
+                  ? <span className="tick" title={repeatLabel(i.repeat, i.due_at)}>🔁</span>
                   : <button className="tick" title="Mark done" onClick={() => onUpdate(i.id, { done: true })}>○</button>}
                 <span className="when">{fmtRange({ due_at: due, all_day: i.all_day, duration_min: i.duration_min })}</span>
-                <span className="what">{i.body.split('\n')[0] || i.file_name || 'Attachment'}</span>
+                <span className="what">{i.body.split('\n')[0] || i.ocr_text?.split('\n')[0] || i.file_name || 'Attachment'}</span>
+                {i.remind_offsets === null && <span className="needs" title="No reminder chosen yet">🔔?</span>}
               </li>
             ))}
           </ul>

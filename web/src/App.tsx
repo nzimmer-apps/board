@@ -212,11 +212,11 @@ export default function App() {
   );
 
   const add = useCallback(
-    async (raw: string, source = 'app', picked: number[] = [0]) => {
+    async (raw: string, source = 'app', picked: number[] | null = null) => {
       const parsed = parseAll(raw);
       // Each note gets its id here, so a note sent late (after being offline) can never arrive twice.
       const rows = parsed.map(({ remind, duration, ...p }) => ({
-        id: crypto.randomUUID(), ...p, duration_min: duration, source, remind_offsets: remind ?? picked,
+        id: crypto.randomUUID(), ...p, duration_min: duration, source, remind_offsets: p.due_at ? remind ?? picked : null,
       }));
       const optimistic: Item[] = rows.map((r) => asPending(r));
       setItems((xs) => [...optimistic, ...xs]);
@@ -238,10 +238,10 @@ export default function App() {
       const saved = asItems(data);
       setItems((xs) => [...saved, ...xs.filter((x) => !saved.some((s) => s.id === x.id))]);
       const p = rows[0];
-      const bell = p.due_at && p.remind_offsets.length ? ' 🔔' : '';
+      const bell = !p.due_at ? '' : p.remind_offsets === null ? ' · pick a reminder' : p.remind_offsets.length ? ' 🔔' : '';
       const when = p.due_at
         ? p.repeat
-          ? ` · 🔁 ${rows.map((r) => repeatLabel(r.repeat)).join(' + ')}`
+          ? ` · 🔁 ${rows.map((r) => repeatLabel(r.repeat, r.due_at)).join(' + ')}`
           : ` · ${new Date(p.due_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', ...(p.all_day ? {} : { hour: 'numeric', minute: '2-digit' }) })}`
         : '';
       flash(`Saved${rows.length > 1 ? ` ${rows.length} items` : ''}${p.tags.length ? ` to #${p.tags.join(' #')}` : ''}${when}${bell}`);
@@ -325,14 +325,14 @@ export default function App() {
   // Attachments: upload → item row. Text is read afterwards in the queue below.
   const localBlobs = useRef(new Map<string, Blob>());
   const addFile = useCallback(
-    async (file: Blob, caption = '', source = 'app', picked: number[] = [0]) => {
+    async (file: Blob, caption = '', source = 'app', picked: number[] | null = null) => {
       const name = file instanceof File ? file.name : '';
       const isPdf = file.type === 'application/pdf';
       const isAudio = file.type.startsWith('audio/');
       flash(isPdf ? 'Uploading PDF…' : isAudio ? 'Uploading audio…' : 'Uploading image…');
       try {
         const { remind, duration, ...p } = parseInput(caption);
-        const row: Partial<Item> = { ...p, duration_min: duration, body: caption.trim() ? p.body : '', source, remind_offsets: remind ?? picked };
+        const row: Partial<Item> = { ...p, duration_min: duration, body: caption.trim() ? p.body : '', source, remind_offsets: p.due_at ? remind ?? picked : null };
         if (isPdf || isAudio) {
           const kind = isPdf ? { type: 'application/pdf', ext: 'pdf' } : audioKind(file.type);
           row.file_path = await uploadFile(file, kind.ext, kind.type);
@@ -364,7 +364,7 @@ export default function App() {
     (it: Pick<Item, 'body' | 'tags' | 'due_at' | 'file_name' | 'remind_offsets'>, transcript: string, caption = '') => {
       const placeholder = isPlaceholderBody(it.body, it.file_name);
       const typed = caption || (placeholder ? '' : it.body);
-      const v = planVoice(transcript, typed, it.remind_offsets.length ? it.remind_offsets : [0]);
+      const v = planVoice(transcript, typed, it.remind_offsets?.length ? it.remind_offsets : null);
       const patch: Partial<Item> = { ocr_text: transcript, tags: [...new Set([...it.tags, ...v.tags])] };
       if (v.body && (placeholder || caption)) patch.body = v.body;
       if (v.url) patch.url = v.url;
@@ -390,7 +390,7 @@ export default function App() {
   // Voice note: the recording is kept, and what was said becomes the note text. Chrome and Edge hear the words
   // while recording; everywhere else (the Android and Windows apps, other browsers) they're read afterwards on this device.
   const addVoice = useCallback(
-    async (audio: Blob, transcript: string, caption: string, seconds: number, picked: number[] = [0]) => {
+    async (audio: Blob, transcript: string, caption: string, seconds: number, picked: number[] | null = null) => {
       flash('Saving voice note…');
       try {
         const kind = audioKind(audio.type);

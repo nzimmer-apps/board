@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { imageUrl } from './images';
 import { fileUrl } from './files';
-import ReminderPicker, { offsetLabel } from './Reminders';
+import ReminderPicker, { OFFSETS, chipLabel, offsetLabel } from './Reminders';
 import RepeatPicker from './RepeatPicker';
 import Upcoming from './Upcoming';
-import { effectiveDue, nextOccurrence, repeatLabel, type Repeat } from './repeat';
+import { effectiveDue, fitRepeat, nextOccurrence, repeatLabel, type Repeat } from './repeat';
 import type { Item, TagColors } from './supabase';
 import { lines, progress, toggle } from './checklist';
 
@@ -140,7 +140,7 @@ export default function Card({ item, onUpdate, onRemove, onTag, colors, archived
   const [end, setEnd] = useState(endOf(item));
   const [tags, setTags] = useState(item.tags.join(' '));
   const [place, setPlace] = useState(item.location ?? '');
-  const [remind, setRemind] = useState<number[]>(item.remind_offsets ?? [0]);
+  const [remind, setRemind] = useState<number[] | null>(item.remind_offsets);
   const [repeat, setRepeat] = useState<Repeat | null>(item.repeat);
   const [snoozing, setSnoozing] = useState(false);
   const [dates, setDates] = useState(false);
@@ -156,7 +156,7 @@ export default function Card({ item, onUpdate, onRemove, onTag, colors, archived
     setEnd(endOf(item));
     setTags(item.tags.join(' '));
     setPlace(item.location ?? '');
-    setRemind(item.remind_offsets ?? [0]);
+    setRemind(item.remind_offsets);
     setRepeat(item.repeat);
     setEditing((e) => !e);
   }
@@ -170,7 +170,7 @@ export default function Card({ item, onUpdate, onRemove, onTag, colors, archived
       kind: due ? item.kind ?? 'event' : null,
       tags: [...new Set(tags.split(/[\s,#]+/).map((t) => t.toLowerCase()).filter(Boolean))],
       remind_offsets: remind,
-      repeat: due ? repeat : null,
+      repeat: due ? fitRepeat(repeat, new Date(due)) : null,
       location: place.trim() || null,
       duration_min: mins > 0 && mins <= 43200 ? mins : null,
     });
@@ -182,7 +182,8 @@ export default function Card({ item, onUpdate, onRemove, onTag, colors, archived
     if (!item.repeat) return onUpdate(item.id, { done: !item.done, snoozed_until: null });
     const cur = new Date(shownDue!);
     const next = nextOccurrence(new Date(item.due_at!), item.repeat, new Date(Math.max(Date.now(), cur.getTime()) + 60e3));
-    if (next) onUpdate(item.id, { due_at: next.toISOString(), snoozed_until: null });
+    // Past the end of the series ("until"): the note is done.
+    onUpdate(item.id, next ? { due_at: next.toISOString(), snoozed_until: null } : { done: true, snoozed_until: null });
   }
 
   const cls = ['card', item.pinned && 'pinned', item.done && 'done', item.tags.length && 'tagged', passed && 'passed'].filter(Boolean).join(' ');
@@ -250,14 +251,19 @@ export default function Card({ item, onUpdate, onRemove, onTag, colors, archived
           <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} />
           <button type="button" className="small" title="Add a tick-box line" style={{ alignSelf: 'flex-start' }}
             onClick={() => setBody((b) => (b && !b.endsWith('\n') ? b + '\n' : b) + '[ ] ')}>☑ Add checklist item</button>
-          <label>Date <input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} /></label>
+          <label>Date <input type="datetime-local" value={due} onChange={(e) => {
+            setDue(e.target.value);
+            // A new or moved date is a new schedule: ask again rather than carry the old choice over.
+            setRemind(e.target.value === toLocalInput(item.due_at) ? item.remind_offsets : null);
+          }} /></label>
           {due && <label>Ends <input type="datetime-local" value={end} min={due} onChange={(e) => setEnd(e.target.value)} /></label>}
-          {due && <label>Repeats <RepeatPicker value={repeat} onChange={setRepeat} day={new Date(due).getDay()} /></label>}
+          {due && <label>Repeats <RepeatPicker value={repeat} onChange={setRepeat} date={new Date(due)} /></label>}
           {due && <ReminderPicker value={remind} onChange={setRemind} />}
           <label>Place <input value={place} onChange={(e) => setPlace(e.target.value)} placeholder="Where it happens (optional)" /></label>
           <label>Tags <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="work llc" /></label>
           <div className="row">
-            <button className="primary" onClick={save}>Save</button>
+            <button className="primary" onClick={save} disabled={Boolean(due) && remind === null}
+              title={due && remind === null ? 'Pick when to be reminded first' : undefined}>Save</button>
             <button onClick={() => setEditing(false)}>Cancel</button>
             {mine && <button className="danger" onClick={() => confirm('Delete permanently?') && onRemove(item.id)}>Delete</button>}
           </div>
@@ -283,10 +289,24 @@ export default function Card({ item, onUpdate, onRemove, onTag, colors, archived
         <div className={overdue ? 'due overdue' : 'due'}>
           {item.kind === 'deadline' ? 'Due ' : item.kind === 'reminder' ? 'Remind ' : ''}
           {fmtRange({ due_at: shownDue, all_day: item.all_day, duration_min: item.duration_min })}
-          {item.repeat && <span className="rep"> · 🔁 {repeatLabel(item.repeat)}</span>}
-          {(item.remind_offsets ?? []).length > 0
-            ? <span className="muted"> · 🔔 {(item.remind_offsets ?? []).map(offsetLabel).join(', ')}</span>
-            : <span className="muted"> · 🔕</span>}
+          {item.repeat && <span className="rep"> · 🔁 {repeatLabel(item.repeat, item.due_at)}</span>}
+          {item.remind_offsets === null
+            ? null
+            : item.remind_offsets.length > 0
+              ? <span className="muted"> · 🔔 {item.remind_offsets.map(offsetLabel).join(', ')}</span>
+              : <span className="muted"> · 🔕</span>}
+        </div>
+      )}
+      {shownDue && !editing && !item.done && !archived && mine && item.remind_offsets === null && (
+        // Dated but no reminder chosen yet (share sheet, extension, an image or voice note…): one tap sets it.
+        <div className="ask-remind">
+          <span>🔔 When should I remind you?</span>
+          <div className="row">
+            {OFFSETS.map((o) => (
+              <button key={o.m} className="chip" onClick={() => onUpdate(item.id, { remind_offsets: [o.m] })}>{chipLabel(o.m)}</button>
+            ))}
+            <button className="chip" onClick={() => onUpdate(item.id, { remind_offsets: [] })}>None</button>
+          </div>
         </div>
       )}
       {item.snoozed_until && !item.done && !archived && mine && new Date(item.snoozed_until).getTime() > Date.now() && (

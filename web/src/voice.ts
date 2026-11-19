@@ -19,7 +19,7 @@ export interface VoiceBooking {
   kind: 'event' | 'deadline' | 'reminder';
   repeat: Repeat | null;
   duration_min: number | null;
-  remind_offsets: number[];
+  remind_offsets: number[] | null;
 }
 
 export interface VoicePlan {
@@ -37,7 +37,7 @@ export interface VoicePlan {
  * Read a voice note. `picked` is the reminder choice from the capture box, used unless
  * the note itself said when to warn ("notify me an hour before").
  */
-export function planVoice(transcript: string, caption = '', picked: number[] = [0], now: Date = new Date()): VoicePlan {
+export function planVoice(transcript: string, caption = '', picked: number[] | null = null, now: Date = new Date()): VoicePlan {
   const said = [caption.trim(), spokenTags(transcript.trim())].filter(Boolean).join('\n');
   if (!said) return { body: '', tags: [], url: null, booking: null, ask: null };
   const p = parseInput(said, now);

@@ -37,7 +37,7 @@ export function toCsv(items: Item[]): string {
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const rows = items.map((i) => [
-    local(i.created_at), i.body, i.tags.join(' '), i.due_at ? local(i.due_at) : '', i.all_day, i.duration_min ?? '', i.kind ?? '', repeatLabel(i.repeat),
+    local(i.created_at), i.body, i.tags.join(' '), i.due_at ? local(i.due_at) : '', i.all_day, i.duration_min ?? '', i.kind ?? '', repeatLabel(i.repeat, i.due_at),
     (i.remind_offsets ?? []).join(' '), i.location ?? '', i.url ?? '', i.done, i.pinned, i.archived,
     i.image_path ? 'image' : i.file_type ?? '', i.ocr_text ?? '',
   ]);
@@ -50,7 +50,7 @@ export function toMarkdown(items: Item[]): string {
   const names = [...groups.keys()].sort((a, b) => (a === 'untagged' ? 1 : b === 'untagged' ? -1 : a.localeCompare(b)));
   const line = (i: Item) => {
     const bits = [
-      i.due_at ? `📅 ${local(i.due_at)}${i.repeat ? ` (${repeatLabel(i.repeat).toLowerCase()})` : ''}` : '',
+      i.due_at ? `📅 ${local(i.due_at)}${i.repeat ? ` (${repeatLabel(i.repeat, i.due_at).toLowerCase()})` : ''}` : '',
       i.location ? `📍 ${i.location}` : '',
       i.image_path ? '🖼 image' : i.file_type === 'audio' ? '🎙 voice note' : i.file_type === 'pdf' ? `📄 ${i.file_name ?? 'PDF'}` : '',
       i.archived ? 'archived' : '',
@@ -85,7 +85,7 @@ export function toIcs(items: Item[]): string {
       out.push(`DTSTART:${icsLocal(d)}`, `DTEND:${icsLocal(new Date(d.getTime() + (i.duration_min ?? 60) * 60e3))}`);
     }
     if (i.repeat) {
-      out.push(`RRULE:${rrule(i.repeat)}`);
+      out.push(`RRULE:${rrule(i.repeat, i.due_at)}`);
       // Skipped or moved dates, at the series' usual time.
       for (const k of i.repeat.skip ?? []) {
         const [y, m, dd] = k.split('-').map(Number);

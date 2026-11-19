@@ -45,7 +45,7 @@ export default function EventPrompt({ proposal: p, more, onConfirm, onSkip }: Pr
   );
   const [place, setPlace] = useState(p.location ?? '');
   const [tags, setTags] = useState([...new Set([...p.tags, 'event'])].join(' '));
-  const [remind, setRemind] = useState<number[]>([60, 1440]);
+  const [remind, setRemind] = useState<number[] | null>(null);
 
   function flipAllDay(v: boolean) {
     setAllDay(v);
@@ -93,7 +93,7 @@ export default function EventPrompt({ proposal: p, more, onConfirm, onSkip }: Pr
         <div className="field"><span className="muted small">When should Board warn you?</span><ReminderPicker value={remind} onChange={setRemind} /></div>
         <div className="row end">
           <button onClick={onSkip}>Not an event</button>
-          <button className="primary" disabled={!when} onClick={confirm}>Add to calendar</button>
+          <button className="primary" disabled={!when || remind === null} title={remind === null ? 'Pick when to be reminded first' : undefined} onClick={confirm}>Add to calendar</button>
         </div>
         {more > 0 && <p className="muted small">{more} more to check after this.</p>}
       </div>

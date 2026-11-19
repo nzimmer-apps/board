@@ -27,7 +27,7 @@ $('save').onclick = async () => {
   try {
     const p = await api.add(text);
     $('text').value = '';
-    msg(`Saved${p.tags.length ? ' to #' + p.tags.join(' #') : ''}${p.due_at ? ' · ' + new Date(p.due_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}`);
+    msg(`Saved${p.tags.length ? ' to #' + p.tags.join(' #') : ''}${p.due_at ? ' · ' + new Date(p.due_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}${p.repeat ? ' · 🔁 repeats' : ''}`);
     setTimeout(() => window.close(), 900);
   } catch (e) { msg(e.message, true); }
   $('save').disabled = false;

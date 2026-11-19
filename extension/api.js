@@ -39,7 +39,7 @@ const api = {
   async add(raw, source = 'extension') {
     const rows = BoardParse.parseRows(raw).map((p) => ({ ...p, source }));
     // PostgREST wants every row of a bulk insert to have the same keys.
-    await api.insert(rows.length > 1 ? rows.map((p) => ({ remind_offsets: [0], ...p })) : rows[0]);
+    await api.insert(rows.length > 1 ? rows.map((p) => ({ remind_offsets: null, ...p })) : rows[0]);
     return rows[0];
   },
   /** Image from a web page → shrink to ≤1600px JPEG → private bucket → item. The app reads its text (OCR) later. */
