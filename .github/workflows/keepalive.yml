@@ -1,5 +1,7 @@
 name: Keep Supabase awake
 # Free Supabase projects pause after ~7 days without activity. One tiny query a day prevents that.
+# Scheduled runs only happen on the default branch (main), so this pings both databases: the real Board's
+# and Board Dev's (the dev values come from scripts/use-env.mjs).
 on:
   schedule: [{ cron: '17 14 * * *' }]
   workflow_dispatch:
@@ -8,8 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Ping database
+      - name: Ping both databases
         run: |
-          set -a; . web/.env.production; set +a
-          curl -fsS -X POST "$VITE_SUPABASE_URL/rest/v1/rpc/ping" \
-            -H "apikey: $VITE_SUPABASE_ANON_KEY" -H "Content-Type: application/json" -d '{}'
+          ping() {
+            set -a; . web/.env.production; set +a
+            echo "Pinging $VITE_APP_NAME"
+            curl -fsS -X POST "$VITE_SUPABASE_URL/rest/v1/rpc/ping" \
+              -H "apikey: $VITE_SUPABASE_ANON_KEY" -H "Content-Type: application/json" -d '{}'
+            echo
+          }
+          ping
+          node scripts/use-env.mjs dev
+          ping

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Board Dev",
+  "productName": "Board",
   "version": "0.2.0",
-  "identifier": "com.nzimmerapps.board.dev",
+  "identifier": "com.nzimmerapps.board",
   "build": {
     "frontendDist": "../web/dist",
     "devUrl": "http://localhost:5173"
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Board Dev",
+        "title": "Board",
         "width": 1100,
         "height": 780,
         "minWidth": 380,

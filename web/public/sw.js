@@ -1,6 +1,9 @@
 // Minimal service worker: makes the app installable and loads the shell offline.
 // Data always comes live from Supabase; only same-origin GETs are cached.
-const CACHE = 'board-shell-v2';
+// The real Board (/board/) and Board Dev (/board/dev/) share one web address, so each keeps its own cache,
+// named after its scope, and only ever clears its own old ones.
+const SCOPE = self.registration.scope;
+const CACHE = `board-shell-v3 ${SCOPE}`;
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './manifest.webmanifest'])));
@@ -9,7 +12,7 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k.endsWith(` ${SCOPE}`)).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -30,7 +33,7 @@ self.addEventListener('fetch', (e) => {
         }
         return res;
       })
-      .catch(() => caches.match(req.mode === 'navigate' ? './' : req)),
+      .catch(() => caches.open(CACHE).then((c) => c.match(req.mode === 'navigate' ? './' : req))),
   );
 });
 
