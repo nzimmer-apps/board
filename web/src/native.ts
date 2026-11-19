@@ -76,7 +76,7 @@ const alerts = (items: Item[], fromMs: number, toMs: number): Alert[] =>
       const snz = i.snoozed_until ? new Date(i.snoozed_until) : null;
       const extra: Alert[] = snz ? [{ i, due: snz, t: snz.getTime(), off: 0, key: `${i.id}:snooze:${snz.getTime()}`, snooze: true }] : [];
       if (!i.due_at) return extra;
-      const offs = i.remind_offsets ?? [0];
+      const offs = i.remind_offsets ?? []; // null = not chosen yet: nothing to send
       const lead = Math.max(0, ...offs) * 60e3;
       // Repeating items: every occurrence whose alerts could land in the window.
       const dues = i.repeat

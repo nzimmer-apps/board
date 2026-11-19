@@ -60,7 +60,7 @@ async function addEventFromTab(tab) {
     all_day: when?.all_day ?? false,
     kind: when ? 'event' : null,
     location: result.event?.location || null,
-    remind_offsets: [60, 1440],
+    remind_offsets: null, // the app asks when to remind
     source: 'extension',
   });
   return { title, when };

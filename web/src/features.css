@@ -49,6 +49,9 @@ button.on { background: var(--accent-dim); border-color: var(--accent); }
 .repeat-pick input { width: 56px; padding: 4px 6px; }
 .repeat-pick .dows { display: inline-flex; gap: 3px; }
 .repeat-pick .dows .chip { padding: 2px 7px; }
+.repeat-pick select { width: auto; }
+.repeat-pick .until { display: inline-flex; gap: 6px; align-items: center; }
+.repeat-pick .until input { width: auto; }
 .card .actions button.danger { color: var(--bad); }
 .occ { font-size: 11px; margin: 0 0 3px 2px; font-family: var(--mono); }
 .day-list .grid > div { break-inside: avoid; }

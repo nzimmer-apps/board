@@ -53,7 +53,7 @@ export default function SharedLink({ token }: { token: string }) {
                     {due && (
                       <div className="due">
                         {fmtRange({ due_at: due, all_day: it.all_day, duration_min: it.duration_min })}
-                        {it.repeat && <span className="rep"> · 🔁 {repeatLabel(it.repeat)}</span>}
+                        {it.repeat && <span className="rep"> · 🔁 {repeatLabel(it.repeat, it.due_at)}</span>}
                       </div>
                     )}
                   </article>

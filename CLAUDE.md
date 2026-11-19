@@ -47,6 +47,9 @@ no-newline file through cmd instead: `cmd /c "gh secret set NAME -R nzimmer-apps
 ## What dev adds on top of Board
 
 - Repeating items: `items.repeat` (jsonb rule) + `web/src/repeat.ts`. `due_at` is the first occurrence; later ones are computed.
+  The rule can also hold `nth` (2nd / last weekday of the month, from the live Board) and `until` (last day, "YYYY-MM-DD").
+  The live Board stored repeats as a text word + `repeat_until`; `20261119120000_repeat_rule.sql` converts that form.
+- Reminders are never assumed: `remind_offsets` null = not chosen yet, and the card asks; `[]` = none (from the live Board).
 - Parser (`web/src/parse.ts`): `parseAll` returns several items for "6 pm sundays, 7 pm monday and thursdays", and
   reads "notify 2 hours and 8 hours before" into notification times.
 - Attachments: voice notes and PDFs in the private `files` bucket (`web/src/files.ts`); text found in a screenshot

@@ -6,7 +6,7 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
-button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 button:disabled { opacity: .5; cursor: default; }
 button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
 button.danger { color: var(--bad); }
@@ -39,11 +39,11 @@ a { color: var(--accent); word-break: break-all; }
 
 .upcoming { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; background: var(--panel); }
 .upcoming h2, .day-list h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 6px; }
-.upcoming ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.upcoming ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .upcoming li { display: flex; gap: 10px; align-items: baseline; font-size: 14px; }
 .upcoming .when { font-family: var(--mono); font-size: 12px; color: var(--accent); white-space: nowrap; }
 .upcoming li.overdue .when { color: var(--bad); }
-.upcoming .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upcoming .what { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tick { padding: 0 6px; border: none; background: none; color: var(--muted); }
 
 .grid { columns: 300px; column-gap: 12px; }
@@ -108,3 +108,64 @@ a { color: var(--accent); word-break: break-all; }
 .small { font-size: 11px; }
 .toast-action { margin-left: 12px; background: transparent; color: inherit; border: 1px solid currentColor; border-radius: 999px; padding: 2px 12px; font-weight: 700; cursor: pointer; }
 .get-words { margin-top: 6px; }
+
+/* Reminders must be picked (from the live Board): a dated note asks until a time or "None" is chosen. */
+.remind-label { color: var(--muted); }
+.remind.required .remind-label { color: var(--warn); }
+.preview.nudge .remind { animation: nudge .5s; }
+@keyframes nudge { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+@media (prefers-reduced-motion: reduce) { .preview.nudge .remind { animation: none; } }
+.ask-remind { margin-top: 8px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--warn) 10%, transparent); font-family: system-ui, sans-serif; font-size: 13px; color: var(--warn); display: grid; gap: 6px; }
+.ask-remind .row { gap: 6px; flex-wrap: wrap; }
+.ask-remind .chip { text-transform: none; font-size: 12px; padding: 3px 10px; color: var(--text); }
+.upcoming .needs { font-size: 12px; color: var(--warn); white-space: nowrap; }
+
+/* Touch screens (from the live Board): bigger hit areas without bigger boxes.
+   Small controls get an invisible hit area via padding + negative margin or ::after, so every tap target is ~40-44px. */
+@media (pointer: coarse), (max-width: 640px) {
+  html, body { font-size: 16px; }
+  input, textarea, .search { font-size: 16px; } /* 16px also stops iOS from zooming on focus */
+  button { min-height: 40px; padding: 8px 14px; }
+  button:active { filter: brightness(1.25); }
+  button.link { min-height: 44px; }
+
+  .top { padding: 8px 0; gap: 8px; }
+  .top nav { margin-left: 4px; gap: 4px; }
+  .tab { min-height: 46px; padding: 8px 16px; font-size: 17px; }
+  .capture textarea { min-height: 84px; }
+  .capture button { min-width: 52px; }
+
+  .chips { gap: 8px; }
+  .chip { min-height: 44px; font-size: 14px; padding: 10px 16px; }
+
+  .upcoming { padding: 6px 12px 6px 4px; }
+  .upcoming h2 { margin: 6px 0 2px 10px; }
+  .upcoming ul { gap: 0; }
+  .upcoming li { align-items: center; min-height: 44px; font-size: 15px; }
+  .upcoming .when { font-size: 13px; }
+  .tick { min-width: 48px; min-height: 48px; padding: 0; font-size: 22px; }
+
+  .card { padding: 6px 14px 12px; font-size: 15px; }
+  .card .meta { font-size: 12px; }
+  .card .actions { gap: 0; margin-right: -10px; }
+  .card .actions button { min-width: 48px; min-height: 48px; padding: 0; font-size: 22px; }
+  .tags { gap: 8px; margin-top: 0; }
+  .tag { position: relative; min-height: 0; font-size: 13px; padding: 5px 10px; }
+  .tag::after { content: ''; position: absolute; inset: -8px -4px; } /* hit area */
+  .due { font-size: 13px; }
+  .ocr { font-size: 13px; }
+
+  .edit { gap: 12px; }
+  .edit label { font-size: 13px; gap: 6px; }
+  .edit .row button { flex: 1; min-height: 50px; font-size: 17px; }
+  .edit .row .danger { flex: 0 0 auto; margin-left: auto; }
+
+  .remind { gap: 8px; width: 100%; }
+  .remind > .remind-label { flex-basis: 100%; }
+  .ask-remind { font-size: 14px; }
+  .ask-remind .row { gap: 8px; }
+  .ask-remind .chip, .remind .chip { font-size: 14px; padding: 10px 14px; min-height: 44px; }
+
+  .cal-head button { min-width: 44px; min-height: 44px; }
+  .cal-head h2 { min-width: 0; flex: 1; font-size: 17px; }
+}

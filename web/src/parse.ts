@@ -1,5 +1,5 @@
 import * as chrono from 'chrono-node';
-import type { Repeat } from './repeat.ts';
+import { dayKey, nthWeekday, type Repeat } from './repeat.ts';
 
 export type Kind = 'event' | 'deadline' | 'reminder';
 
@@ -85,6 +85,12 @@ const TOKEN_RE = new RegExp(
 
 interface Group { days: number[]; time: { h: number; m: number } | null }
 
+// ---------- "2nd friday of the month", "until march 31" ----------
+const NTH_RE = new RegExp(`\\b(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th|last)\\s+(${DAY_NAME})\\b`, 'i');
+const NTH: Record<string, number> = { first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4, fifth: 5, '5th': 5, last: -1 };
+const MONTH_CUE_RE = /\b(?:of\s+)?(?:the|each|every)\s+month\b|\bmonthly\b|\bonce\s+a\s+month\b/i;
+const UNTIL_RE = /\s*\b(?:until|till|through|thru)\s+(.+)$/i;
+
 const tidy = (s: string) =>
   s
     .replace(/[ \t]{2,}/g, ' ')
@@ -144,6 +150,41 @@ export function parseAll(raw: string, now: Date = new Date()): Parsed[] {
   const kindOf = (s: string): Kind =>
     /\bremind(\s+me)?\b/i.test(s) ? 'reminder' : /\b(due|deadline|by|before)\b/i.test(s) ? 'deadline' : 'event';
   const base = { tags: [...tags], url, remind, duration };
+
+  // ---- "until March 31" ends a repeating series (read apart, so it isn't taken as the start) ----
+  const nthHit = t.match(NTH_RE);
+  const nthMonthly = nthHit && (MONTH_CUE_RE.test(t) || /\b(?:every|each)\b/i.test(t));
+  const repeating = Boolean(nthMonthly || EVERY_RE.test(t) || ADV_RE.test(t) || PLURAL_DAY_RE.test(t));
+  let until: string | undefined;
+  const um = repeating ? t.match(UNTIL_RE) : null;
+  if (um) {
+    const u = chrono.parse(um[1].replace(HOLE, ' '), now, { forwardDate: true })[0];
+    if (u && (u.start.isCertain('day') || u.start.isCertain('month'))) {
+      until = dayKey(u.start.date());
+      t = (t.slice(0, um.index) + t.slice(um.index! + um[0].length)).trim();
+    }
+  }
+  const withUntil = (r: Repeat): Repeat => (until ? { ...r, until } : r);
+
+  // ---- "2nd Friday of the month", "last Saturday of every month" ----
+  if (nthMonthly) {
+    const n = NTH[nthHit![1].toLowerCase()];
+    const wd = DAY_IDX.indexOf(nthHit![2].slice(0, 3).toLowerCase());
+    let body = t.replace(nthHit![0], ' ').replace(MONTH_CUE_RE, ' ').replace(/\b(?:every|each)\b/i, ' ');
+    const tm = chrono.parse(body.replace(HOLE, ' '), now, { forwardDate: true }).find((r) => r.start.isCertain('hour') && !VAGUE_RE.test(r.text.trim()));
+    if (tm) body = body.replace(tm.text, ' ');
+    const h = tm?.start.get('hour') ?? 9;
+    const mi = tm ? tm.start.get('minute') ?? 0 : 0;
+    let first = new Date(now);
+    for (let k = 0; k < 14; k++) {
+      const day = nthWeekday(now.getFullYear(), now.getMonth() + k, wd, n);
+      if (day === null) continue;
+      first = new Date(now.getFullYear(), now.getMonth() + k, day, h, mi);
+      if (first > now) break;
+    }
+    body = restore(tidy(body)) || raw.trim();
+    return [{ ...base, body, due_at: first.toISOString(), all_day: !tm, kind: kindOf(body), repeat: withUntil({ freq: 'monthly', interval: 1, nth: n }) }];
+  }
 
   // ---- repeating ----
   const every = t.match(EVERY_RE);
@@ -227,26 +268,31 @@ export function parseAll(raw: string, now: Date = new Date()): Parsed[] {
         body = body.replace(new RegExp(`(?:\\bon\\s+)?(?:\\bthe\\s+)?${hit.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'), ' ');
       }
     }
-    body = restore(tidy(body)) || raw.trim();
-    const kind = kindOf(body);
+    // Just a word like "weekly" with no day, time or date ("weekly ideas list") is not a schedule.
+    const onlyWord = adv && !every && !toks.length && !anchor && !PLURAL_DAY_RE.test(t);
+    if (!onlyWord) {
+      body = restore(tidy(body)) || raw.trim();
+      const kind = kindOf(body);
 
-    return groups.map((g) => {
-      const all_day = !g.time;
-      const h = g.time?.h ?? 9;
-      const mi = g.time?.m ?? 0;
-      let first: Date;
-      if (anchor) {
-        first = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), h, mi);
-      } else {
-        // The next day that fits (today counts if the time is still ahead).
-        first = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, mi);
-        for (let i = 0; i < 8 && (first <= now || (g.days.length > 0 && !g.days.includes(first.getDay()))); i++)
-          first = new Date(first.getFullYear(), first.getMonth(), first.getDate() + 1, h, mi);
-      }
-      const repeat: Repeat = { freq, interval };
-      if (freq === 'weekly') repeat.days = g.days.length ? g.days : [first.getDay()];
-      return { ...base, body, due_at: first.toISOString(), all_day, kind, repeat };
-    });
+      return groups.map((g) => {
+        const all_day = !g.time;
+        const h = g.time?.h ?? 9;
+        const mi = g.time?.m ?? 0;
+        let first: Date;
+        if (anchor) {
+          first = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), h, mi);
+        } else {
+          // The next day that fits (today counts if the time is still ahead).
+          first = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, mi);
+          for (let i = 0; i < 8 && (first <= now || (g.days.length > 0 && !g.days.includes(first.getDay()))); i++)
+            first = new Date(first.getFullYear(), first.getMonth(), first.getDate() + 1, h, mi);
+        }
+        const repeat: Repeat = { freq, interval };
+        if (freq === 'weekly') repeat.days = g.days.length ? g.days : [first.getDay()];
+        return { ...base, body, due_at: first.toISOString(), all_day, kind, repeat: withUntil(repeat) };
+      });
+    }
+    t = typed; // fall through and read it as a one-off note
   }
 
   // ---- one-off ----
@@ -286,23 +332,37 @@ export function parseRows(raw: string, now: Date = new Date()) {
   }));
 }
 
+const MONTH_WORD_RE = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\b/i;
+const WEEKDAY_WORD_RE = /\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tues|tue|wed|thurs|thur|thu|fri|sat)\b/i;
+const NUMERIC_DATE_RE = /\b\d{1,2}[/.-]\d{1,2}([/.-]\d{2,4})?\b/;
+const CLOCK_RE = /\d(:\d{2}|\s?[ap]\.?m\b)/i;
+
 /**
  * Look for an event date in text Board read out of a screenshot, PDF, voice note or web page.
- * Stricter than parseInput: a bare time ("9:41" from a phone's status bar) is not enough,
- * there has to be an actual day.
+ * Stricter than parseInput, because that text is noisy:
+ * - each line is read on its own, so stray digits on one line don't merge with a date on the next;
+ * - there has to be a written day (a month name, a weekday, 11/21 or today/tomorrow), not a bare time ("9:41" from a
+ *   phone's status bar) or a relative phrase ("two day event");
+ * - a time must look like a clock time (7:00, 7pm); one on a line of its own is joined to the date;
+ * - the date must fall between yesterday and two years ahead.
  */
 export function findEventDate(text: string, now: Date = new Date()): { due_at: string; all_day: boolean; text: string } | null {
   const soon = now.getTime() - 864e5;
   const far = now.getTime() + 2 * 365 * 864e5;
-  for (const r of chrono.parse(text.slice(0, 6000), now, { forwardDate: true })) {
+  const found = text.slice(0, 6000).split(/\n+/).flatMap((l) => chrono.parse(l, now, { forwardDate: true }));
+  const clock = found.find((r) => r.start.isCertain('hour') && CLOCK_RE.test(r.text))?.start;
+  for (const r of found) {
     const s = r.start;
     if (!(s.isCertain('day') || s.isCertain('weekday')) || VAGUE_RE.test(r.text.trim())) continue;
     if (/^\d{1,2}[./-]\d{1,2}$/.test(r.text.trim())) continue; // "3/4" is more often a fraction or a score
+    const written = MONTH_WORD_RE.test(r.text) || WEEKDAY_WORD_RE.test(r.text) || NUMERIC_DATE_RE.test(r.text) || /\b(today|tonight|tomorrow)\b/i.test(r.text);
+    if (!written) continue;
     const d = s.date();
-    const all_day = !s.isCertain('hour');
-    if (all_day) d.setHours(9, 0, 0, 0);
+    const time = s.isCertain('hour') && CLOCK_RE.test(r.text) ? s : clock;
+    if (time) d.setHours(time.get('hour') ?? 9, time.get('minute') ?? 0, 0, 0);
+    else d.setHours(9, 0, 0, 0);
     if (d.getTime() < soon || d.getTime() > far) continue;
-    return { due_at: d.toISOString(), all_day, text: r.text };
+    return { due_at: d.toISOString(), all_day: !time, text: r.text };
   }
   return null;
 }

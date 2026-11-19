@@ -31,7 +31,8 @@ export interface Item {
   created_at: string;
   image_path: string | null;
   ocr_text: string | null;
-  remind_offsets: number[];
+  /** Minutes before due_at to notify; [] = no reminder; null = not chosen yet (the card asks). */
+  remind_offsets: number[] | null;
   repeat: Repeat | null;
   location: string | null;
   file_path: string | null;

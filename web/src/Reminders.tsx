@@ -1,5 +1,6 @@
 // Notification timing chips: pick any combination when adding or editing a dated note,
-// or add a custom lead time ("8 hours before").
+// or add a custom lead time ("8 hours before"). A dated note must get an explicit choice:
+// value null = not chosen yet, [] = no reminder ("None"), [0, 60] = at the time and 1 hr before.
 import { useState } from 'react';
 
 export const OFFSETS: { m: number; label: string }[] = [
@@ -22,11 +23,15 @@ export function offsetLabel(m: number) {
   return `${Math.floor(m / 60)} hr ${m % 60} min`;
 }
 
-export default function ReminderPicker({ value, onChange }: { value: number[]; onChange: (v: number[]) => void }) {
+export const chipLabel = (m: number) => (m === 0 ? 'At time' : `${offsetLabel(m)} before`);
+
+export default function ReminderPicker({ value: chosen, onChange }: { value: number[] | null; onChange: (v: number[] | null) => void }) {
+  const value = chosen ?? [];
   const [adding, setAdding] = useState(false);
   const [n, setN] = useState('8');
   const [unit, setUnit] = useState(60);
-  const set = (v: number[]) => onChange([...new Set(v)].sort((a, b) => a - b).slice(0, MAX_REMINDERS));
+  // Un-ticking the last time goes back to "not chosen"; "None" is its own choice.
+  const set = (v: number[]) => onChange(v.length ? [...new Set(v)].sort((a, b) => a - b).slice(0, MAX_REMINDERS) : null);
   const toggle = (m: number) => set(value.includes(m) ? value.filter((x) => x !== m) : [...value, m]);
   // Presets, plus whatever custom times are already on this note.
   const shown = [...OFFSETS.map((o) => o.m), ...value.filter((m) => !OFFSETS.some((o) => o.m === m))].sort((a, b) => a - b);
@@ -36,11 +41,11 @@ export default function ReminderPicker({ value, onChange }: { value: number[]; o
     setAdding(false);
   };
   return (
-    <span className="remind">
-      <span className="muted">Notify:</span>
+    <span className={chosen === null ? 'remind required' : 'remind'}>
+      <span className="remind-label">{chosen === null ? 'Remind me — pick one:' : 'Remind me:'}</span>
       {shown.map((m) => (
         <button key={m} type="button" className={value.includes(m) ? 'chip on' : 'chip'} onClick={() => toggle(m)}>
-          {m === 0 ? 'At time' : `${offsetLabel(m)} before`}
+          {chipLabel(m)}
         </button>
       ))}
       {adding ? (
@@ -61,7 +66,9 @@ export default function ReminderPicker({ value, onChange }: { value: number[]; o
           <button type="button" className="chip" title="Add another warning time" onClick={() => setAdding(true)}>+ Custom</button>
         )
       )}
-      {value.length === 0 && <span className="muted small">off</span>}
+      <button type="button" className={chosen?.length === 0 ? 'chip on' : 'chip'} onClick={() => onChange(chosen?.length === 0 ? null : [])}>
+        None
+      </button>
     </span>
   );
 }
