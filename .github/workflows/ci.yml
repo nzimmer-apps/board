@@ -18,6 +18,12 @@ jobs:
         run: npm test
       - name: Typecheck
         run: npx tsc --noEmit
+      # The committed files must hold the real Board's settings, and the dev switch must still apply cleanly.
+      - name: Dev/prod switch round trip
+        run: |
+          node ../scripts/use-env.mjs dev
+          node ../scripts/use-env.mjs prod
+          git diff --exit-code
 
   # Compiles the Android app (unsigned debug build) so Java and manifest mistakes show up before merging.
   android:

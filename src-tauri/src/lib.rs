@@ -23,12 +23,12 @@ pub fn run() {
         // Started by Windows at sign-in with --hidden: stay in the tray so reminders keep firing.
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .setup(|app| {
-            let open = MenuItem::with_id(app, "open", "Open Board Dev", true, None::<&str>)?;
+            let open = MenuItem::with_id(app, "open", "Open Board", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("Board Dev (Ctrl+Alt+D)")
+                .tooltip("Board (Ctrl+Alt+B)")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {

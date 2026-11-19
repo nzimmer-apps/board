@@ -4,7 +4,10 @@
 export type Store = Pick<Storage, 'getItem' | 'setItem'>;
 export type QueuedRow = Record<string, unknown> & { id: string };
 
-const KEY = 'board-offline-queue';
+// The real Board and Board Dev share one web address (nzimmer-apps.github.io), so they share local storage.
+// The key names the database, so a note queued in one can never be sent to the other.
+const DB_URL = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_SUPABASE_URL ?? '';
+const KEY = `board-offline-queue${DB_URL ? `:${new URL(DB_URL).hostname.split('.')[0]}` : ''}`;
 
 export function loadQueue(store: Store): QueuedRow[] {
   try {
