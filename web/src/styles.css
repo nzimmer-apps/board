@@ -1,6 +1,6 @@
 :root {
   --bg: #0d0f0e; --panel: #151917; --line: #26302b; --text: #e8efe9; --muted: #8a978f;
-  --accent: #4ade80; --accent-dim: #1f3d2b; --warn: #f59e0b; --bad: #f87171;
+  --accent: #4ade80; --accent-dim: #1f3d2b; --warn: #f59e0b; --bad: #f87171; --info: #93c5fd; --on-accent: #062312; --tag-line: #2f5a3f;
   --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
   color-scheme: dark;
 }
@@ -8,12 +8,12 @@
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
 button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 button:disabled { opacity: .5; cursor: default; }
-button.primary { background: var(--accent); color: #062312; border-color: var(--accent); font-weight: 600; }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
 button.danger { color: var(--bad); }
 button.link { background: none; border: none; color: var(--muted); text-decoration: underline; }
 button.small, .small { font-size: 13px; padding: 4px 10px; }
-input, textarea, select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; }
-input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent-dim); border-color: var(--accent); }
+input, textarea { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; }
+input:focus, textarea:focus { outline: 2px solid var(--accent-dim); border-color: var(--accent); }
 a { color: var(--accent); word-break: break-all; }
 .muted { color: var(--muted); }
 .brand { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; letter-spacing: -.02em; font-size: 22px; }
@@ -48,7 +48,7 @@ a { color: var(--accent); word-break: break-all; }
 
 .grid { columns: 300px; column-gap: 12px; }
 .card { break-inside: avoid; margin: 0 0 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel); font-family: var(--mono); font-size: 13px; }
-.card.tagged { border-color: #2f5a3f; }
+.card.tagged { border-color: var(--tag-line); }
 .card.pinned { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim) inset; }
 .card.done .body { text-decoration: line-through; opacity: .55; }
 .card .meta { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 11px; gap: 8px; }
@@ -72,17 +72,17 @@ a { color: var(--accent); word-break: break-all; }
 .dow { font-size: 11px; text-transform: uppercase; color: var(--muted); text-align: center; padding: 4px 0; }
 .day { min-height: 84px; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 4px; text-align: left; border-radius: 6px; overflow: hidden; }
 .day.other { opacity: .4; }
-.day.today .num { background: var(--accent); color: #062312; border-radius: 999px; padding: 0 6px; }
+.day.today .num { background: var(--accent); color: var(--on-accent); border-radius: 999px; padding: 0 6px; }
 .day.picked { border-color: var(--accent); }
 .num { font-size: 12px; align-self: flex-start; }
 .pill { font-size: 10px; background: var(--accent-dim); color: var(--accent); border-radius: 4px; padding: 1px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pill.deadline { background: #3d2a12; color: var(--warn); }
-.pill.reminder { background: #1e2a3d; color: #93c5fd; }
+.pill.deadline { background: color-mix(in srgb, var(--warn) 22%, var(--panel)); color: var(--warn); }
+.pill.reminder { background: color-mix(in srgb, var(--info) 22%, var(--panel)); color: var(--info); }
 .pill.done { text-decoration: line-through; opacity: .5; }
 .more { font-size: 10px; color: var(--muted); }
 .day-list { margin-top: 18px; }
 
-.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--accent); color: #062312; font-weight: 600; padding: 10px 16px; border-radius: 999px; box-shadow: 0 6px 24px #0008; max-width: 90vw; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--accent); color: var(--on-accent); font-weight: 600; padding: 10px 16px; border-radius: 999px; box-shadow: 0 6px 24px #0008; max-width: 90vw; }
 
 @media (max-width: 640px) {
   .day { min-height: 54px; }
@@ -106,19 +106,22 @@ a { color: var(--accent); word-break: break-all; }
 .remind { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .remind .chip { font-size: 11px; padding: 2px 8px; text-transform: none; }
 .small { font-size: 11px; }
+.toast-action { margin-left: 12px; background: transparent; color: inherit; border: 1px solid currentColor; border-radius: 999px; padding: 2px 12px; font-weight: 700; cursor: pointer; }
+.get-words { margin-top: 6px; }
+
+/* Reminders must be picked (from the live Board): a dated note asks until a time or "None" is chosen. */
 .remind-label { color: var(--muted); }
 .remind.required .remind-label { color: var(--warn); }
 .preview.nudge .remind { animation: nudge .5s; }
 @keyframes nudge { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
-.ask-remind { margin-top: 8px; padding: 8px 10px; border: 1px solid #5a4316; border-radius: 8px; background: #241b0b; font-family: system-ui, sans-serif; font-size: 13px; color: var(--warn); display: grid; gap: 6px; }
-.ask-remind .row { gap: 6px; }
+@media (prefers-reduced-motion: reduce) { .preview.nudge .remind { animation: none; } }
+.ask-remind { margin-top: 8px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--warn) 10%, transparent); font-family: system-ui, sans-serif; font-size: 13px; color: var(--warn); display: grid; gap: 6px; }
+.ask-remind .row { gap: 6px; flex-wrap: wrap; }
 .ask-remind .chip { text-transform: none; font-size: 12px; padding: 3px 10px; color: var(--text); }
 .upcoming .needs { font-size: 12px; color: var(--warn); white-space: nowrap; }
 
-
-/* Touch screens: bigger hit areas without bigger boxes.
-   Small visual controls (icons, tags) get an invisible hit area via padding + negative margin or ::after,
-   so the layout keeps its density while every tap target is ~40-44px. */
+/* Touch screens (from the live Board): bigger hit areas without bigger boxes.
+   Small controls get an invisible hit area via padding + negative margin or ::after, so every tap target is ~40-44px. */
 @media (pointer: coarse), (max-width: 640px) {
   html, body { font-size: 16px; }
   input, textarea, .search { font-size: 16px; } /* 16px also stops iOS from zooming on focus */
@@ -161,11 +164,8 @@ a { color: var(--accent); word-break: break-all; }
   .remind > .remind-label { flex-basis: 100%; }
   .ask-remind { font-size: 14px; }
   .ask-remind .row { gap: 8px; }
-  .ask-remind .chip { font-size: 14px; padding: 10px 14px; min-height: 44px; }
-  .remind .chip { font-size: 14px; padding: 10px 14px; min-height: 44px; }
+  .ask-remind .chip, .remind .chip { font-size: 14px; padding: 10px 14px; min-height: 44px; }
 
   .cal-head button { min-width: 44px; min-height: 44px; }
   .cal-head h2 { min-width: 0; flex: 1; font-size: 17px; }
 }
-.repeat { color: var(--text); opacity: .8; }
-select { width: 100%; appearance: auto; }

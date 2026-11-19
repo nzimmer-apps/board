@@ -1,22 +1,67 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { supabase, configured, type Item } from './supabase';
-import { parseInput, findEventDate } from './parse';
+import { supabase, configured, ITEM_COLS, APP_NAME, type Item, type TagColors } from './supabase';
+import { parseAll, parseInput, findEventDate } from './parse';
 import Auth from './Auth';
 import Board from './Board';
 import Calendar from './Calendar';
-import { onShared, syncReminders, registerHotkey } from './native';
+import Archive from './Archive';
+import Tags from './Tags';
+import More, { ThemeSwatches } from './More';
+import EventPrompt, { type Proposal } from './EventPrompt';
+import { onShared, onQuick, syncReminders, registerHotkey } from './native';
 import { shrink, upload, readText, download, removeImage } from './images';
-import { describeRepeat } from './recur';
+import { uploadFile, downloadFile, removeFile, pdfText, audioKind } from './files';
+import { transcribe } from './transcribe';
+import { planVoice, isPlaceholderBody } from './voice';
+import { unfurl, looksLikeEventUrl } from './unfurl';
+import { applyTheme, getTheme, type ThemeId } from './theme';
+import { repeatLabel } from './repeat';
+import { syncPushSchedule } from './push';
+import { enqueue, flushQueue, loadQueue, isNetworkError, patchQueued } from './offlineQueue';
+import Shared, { type SharedItem } from './Shared';
+import SharedLink from './SharedLink';
+import { SHARE_COLS, tokenFromSearch, type Share } from './share';
 
-type View = 'board' | 'calendar';
+type View = 'board' | 'calendar' | 'archive' | 'tags' | 'shared' | 'more';
+const VIEWS: View[] = ['board', 'calendar', 'archive', 'tags', 'shared', 'more'];
+const fromHash = (): View => VIEWS.find((v) => location.hash === `#${v}`) ?? 'board';
+const asItems = (d: unknown) => (d ?? []) as Item[];
+
+// A note that exists only on this device so far (typed offline, not yet sent).
+const asPending = (r: Record<string, unknown>, at = new Date().toISOString()): Item => ({
+  done: false, pinned: false, archived: false, created_at: at, tags: [], due_at: null, all_day: false, url: null,
+  remind_offsets: [], repeat: null, duration_min: null,
+  image_path: null, ocr_text: null, location: null, file_path: null, file_type: null, file_name: null, snoozed_until: null,
+  ...(r as Partial<Item>),
+} as Item);
+const pendingItems = () => loadQueue(localStorage).map((r) => asPending(r, String(r.created_at ?? new Date().toISOString())));
+// Opened from a share link: show that instead of the app (no sign-in needed).
+const LINK_TOKEN = typeof location !== 'undefined' ? tokenFromSearch(location.search) : null;
+type ToastAction = { label: string; run: () => void };
+const whenLabel = (iso: string) =>
+  new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [items, setItems] = useState<Item[]>([]);
-  const [view, setView] = useState<View>(() => (location.hash === '#calendar' ? 'calendar' : 'board'));
-  const [toast, setToast] = useState<string | null>(null);
+  const [archived, setArchived] = useState<Item[] | null>(null);
+  const [colors, setColors] = useState<TagColors>({});
+  const [view, setView] = useState<View>(fromHash);
+  const [toast, setToast] = useState<{ msg: string; action?: ToastAction } | null>(null);
+  const [theme, setTheme] = useState<ThemeId>(getTheme);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const [prompts, setPrompts] = useState<Proposal[]>([]);
+  const [jump, setJump] = useState<{ tag: string; n: number } | null>(null);
   const shareHandled = useRef(false);
+  const [shares, setShares] = useState<Share[]>([]);
+  const [sharedItems, setSharedItems] = useState<SharedItem[] | null>(null);
+  // Notes others shared with me are readable too, so my own lists ask for my notes only.
+  const uidRef = useRef('');
+  uidRef.current = session?.user.id ?? '';
+
+  useEffect(() => { applyTheme(theme); }, [theme]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -24,144 +69,411 @@ export default function App() {
     return () => data.subscription.unsubscribe();
   }, []);
 
-  const flash = useCallback((m: string) => {
-    setToast(m);
-    window.setTimeout(() => setToast(null), 2500);
+  const toastTimer = useRef<number>();
+  const flash = useCallback((m: string, action?: ToastAction) => {
+    setToast({ msg: m, action });
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), action ? 8000 : 3000);
   }, []);
+
+  const viewRef = useRef(view);
+  viewRef.current = view;
+
+  const loadArchived = useCallback(async () => {
+    const { data, error } = await supabase.from('items').select(ITEM_COLS).eq('user_id', uidRef.current).eq('archived', true).order('created_at', { ascending: false }).limit(1000);
+    if (error) flash(error.message);
+    else setArchived(asItems(data));
+  }, [flash]);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from('items')
-      .select('id,body,url,tags,source,due_at,all_day,kind,done,pinned,archived,created_at,image_path,ocr_text,remind_offsets,repeat,repeat_until')
+      .select(ITEM_COLS)
+      .eq('user_id', uidRef.current)
       .eq('archived', false)
       .order('created_at', { ascending: false })
       .limit(1000);
-    if (error) flash(error.message);
-    else setItems(data as Item[]);
+    if (error) { if (!isNetworkError(error.message)) flash(error.message); }
+    else {
+      // Notes still waiting to be sent stay visible on top.
+      const waiting = pendingItems();
+      const got = asItems(data);
+      setItems([...waiting.filter((w) => !got.some((g) => g.id === w.id)), ...got]);
+    }
+    if (viewRef.current === 'archive') loadArchived();
+  }, [flash, loadArchived]);
+
+  // Shares: mine (to manage) and other people's to me, plus the notes those cover.
+  const loadShared = useCallback(async () => {
+    const [{ data: s }, { data: its, error }] = await Promise.all([
+      supabase.from('shares').select(SHARE_COLS),
+      supabase.from('items').select(ITEM_COLS + ',user_id').neq('user_id', uidRef.current).eq('archived', false)
+        .order('due_at', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }).limit(1000),
+    ]);
+    if (s) setShares(s as Share[]);
+    if (error) { if (!isNetworkError(error.message)) flash(error.message); }
+    else setSharedItems((its ?? []) as unknown as SharedItem[]);
   }, [flash]);
+
+  const loadColors = useCallback(async () => {
+    const { data } = await supabase.from('categories').select('name,color');
+    if (data) setColors(Object.fromEntries(data.filter((c) => c.color).map((c) => [c.name, c.color as string])));
+  }, []);
 
   // Initial load + live sync from other devices
   useEffect(() => {
     if (!session) return;
     load();
+    loadColors();
+    loadShared();
     const ch = supabase
       .channel('items')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, (p) => {
+        const owner = ((p.new ?? p.old) as { user_id?: string } | null)?.user_id;
+        if (!owner || owner === uidRef.current) load();
+        if (owner !== uidRef.current) loadShared();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => loadColors())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shares' }, () => loadShared())
       .subscribe();
-    const onFocus = () => load();
+    const onFocus = () => { load(); loadShared(); };
     window.addEventListener('focus', onFocus);
     return () => {
       supabase.removeChannel(ch);
       window.removeEventListener('focus', onFocus);
     };
-  }, [session, load]);
+  }, [session, load, loadColors, loadShared]);
+
+  useEffect(() => { if (session && view === 'archive') loadArchived(); }, [session, view, loadArchived]);
+
+  const ask = useCallback((p: Proposal) => setPrompts((ps) => (ps.some((x) => x.itemId === p.itemId) ? ps : [...ps, p])), []);
+
+  const update = useCallback(
+    async (id: string, patch: Partial<Item>) => {
+      // Archiving / restoring moves a note between the two lists.
+      if (patch.archived === true) {
+        setItems((xs) => {
+          const it = xs.find((x) => x.id === id);
+          if (it) setArchived((a) => (a ? [{ ...it, ...patch }, ...a.filter((x) => x.id !== id)] : a));
+          return xs.filter((x) => x.id !== id);
+        });
+      } else if (patch.archived === false) {
+        setArchived((a) => {
+          const it = a?.find((x) => x.id === id);
+          if (it) setItems((xs) => [{ ...it, ...patch }, ...xs.filter((x) => x.id !== id)].sort((x, y) => y.created_at.localeCompare(x.created_at)));
+          return a ? a.filter((x) => x.id !== id) : a;
+        });
+      } else {
+        setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+        setArchived((a) => (a ? a.map((x) => (x.id === id ? { ...x, ...patch } : x)) : a));
+      }
+      if (patchQueued(localStorage, id, patch as Record<string, unknown>)) return;
+      const { error } = await supabase.from('items').update(patch).eq('id', id);
+      if (error) { flash(error.message); load(); }
+      else if (patch.archived === true) flash('Archived · find it under Archive');
+      else if (patch.archived === false) flash('Back on the board');
+    },
+    [flash, load],
+  );
+
+  // Changes to a note someone shared with me (the database checks I'm allowed to edit it).
+  const updateShared = useCallback(async (id: string, patch: Partial<Item>) => {
+    setSharedItems((xs) => (xs ? xs.map((x) => (x.id === id ? { ...x, ...patch } : x)) : xs));
+    const { data, error } = await supabase.from('items').update(patch).eq('id', id).select('id');
+    if (error || !data?.length) { flash(error?.message ?? "You can't change this note any more."); loadShared(); }
+  }, [flash, loadShared]);
+
+  const leaveShare = useCallback(async (s: Share) => {
+    const { error } = await supabase.from('shares').delete().eq('id', s.id);
+    if (error) flash(error.message);
+    else flash(`Left ${s.tag ? `#${s.tag}` : 'the note'}`);
+    loadShared();
+  }, [flash, loadShared]);
+
+  // A saved link: fetch its title, and if it is an event page offer to put it on the calendar.
+  const enrichLink = useCallback(
+    async (it: Item) => {
+      if (!it.url || it.due_at) return;
+      const info = await unfurl(it.url).catch(() => null);
+      if (!info) return;
+      const bare = it.body.trim() === it.url;
+      const typed = it.body.replace(it.url, '').trim().split('\n')[0];
+      const title = typed || info.title || '';
+      if (info.due_at || info.looksLikeEvent) {
+        ask({
+          itemId: it.id, from: 'link', title: title || 'Event', due_at: info.due_at, all_day: info.all_day, duration_min: info.duration_min,
+          location: info.location, tags: it.tags, keep: it.url,
+        });
+      } else if (bare && info.title) {
+        update(it.id, { body: `${info.title}\n${it.url}` });
+      }
+    },
+    [ask, update],
+  );
 
   const add = useCallback(
-    async (raw: string, source = 'app', remind: number[] | null = null) => {
-      const parsed = parseInput(raw);
-      // A reminder is never assumed: dated notes without a choice save as null and the card asks.
-      const p = { ...parsed, remind_offsets: parsed.due_at ? remind : null };
-      const optimistic: Item = {
-        id: `tmp-${Date.now()}`, ...p, source, done: false, pinned: false, archived: false,
-        created_at: new Date().toISOString(), image_path: null, ocr_text: null,
+    async (raw: string, source = 'app', picked: number[] | null = null) => {
+      const parsed = parseAll(raw);
+      // Each note gets its id here, so a note sent late (after being offline) can never arrive twice.
+      const rows = parsed.map(({ remind, duration, ...p }) => ({
+        id: crypto.randomUUID(), ...p, duration_min: duration, source, remind_offsets: p.due_at ? remind ?? picked : null,
+      }));
+      const optimistic: Item[] = rows.map((r) => asPending(r));
+      setItems((xs) => [...optimistic, ...xs]);
+      const keepOffline = () => {
+        const uid = session?.user.id;
+        enqueue(localStorage, rows.map((r, n) => ({ ...r, ...(uid ? { user_id: uid } : {}), created_at: optimistic[n].created_at })));
+        window.dispatchEvent(new Event('board-queued'));
+        flash(`Offline · saved on this device${rows.length > 1 ? ` (${rows.length} items)` : ''}, will sync when you're back online`);
+        return true;
       };
-      setItems((xs) => [optimistic, ...xs]);
-      const { data, error } = await supabase.from('items').insert({ ...p, source }).select().single();
+      if (isOffline()) return keepOffline();
+      const { data, error } = await supabase.from('items').insert(rows).select(ITEM_COLS);
+      if (error && isNetworkError(error.message)) return keepOffline();
+      setItems((xs) => xs.filter((x) => !optimistic.some((o) => o.id === x.id)));
       if (error) {
-        setItems((xs) => xs.filter((x) => x.id !== optimistic.id));
         flash(`Not saved: ${error.message}`);
         return false;
       }
-      setItems((xs) => xs.map((x) => (x.id === optimistic.id ? (data as Item) : x)));
+      const saved = asItems(data);
+      setItems((xs) => [...saved, ...xs.filter((x) => !saved.some((s) => s.id === x.id))]);
+      const p = rows[0];
       const bell = !p.due_at ? '' : p.remind_offsets === null ? ' · pick a reminder' : p.remind_offsets.length ? ' 🔔' : '';
-      const when = p.due_at ? ` · ${new Date(p.due_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', ...(p.all_day ? {} : { hour: 'numeric', minute: '2-digit' }) })}` : '';
-      const rep = p.repeat && p.due_at ? ` · 🔁 ${describeRepeat(p.repeat, new Date(p.due_at))}` : '';
-      flash(`Saved${p.tags.length ? ` to #${p.tags.join(' #')}` : ''}${when}${rep}${bell}`);
+      const when = p.due_at
+        ? p.repeat
+          ? ` · 🔁 ${rows.map((r) => repeatLabel(r.repeat, r.due_at)).join(' + ')}`
+          : ` · ${new Date(p.due_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', ...(p.all_day ? {} : { hour: 'numeric', minute: '2-digit' }) })}`
+        : '';
+      flash(`Saved${rows.length > 1 ? ` ${rows.length} items` : ''}${p.tags.length ? ` to #${p.tags.join(' #')}` : ''}${when}${bell}`);
+      if (saved.length === 1 && saved[0].url && !saved[0].due_at) {
+        if (looksLikeEventUrl(saved[0].url)) flash('Saved · checking the event link…');
+        enrichLink(saved[0]);
+      }
+      return true;
+    },
+    [flash, enrichLink, session],
+  );
+
+  // Offline notes: show them straight away, and send them whenever the connection comes back.
+  const [online, setOnline] = useState(() => !isOffline());
+  const [waiting, setWaiting] = useState(() => loadQueue(localStorage).length);
+  const flushing = useRef(false);
+  const sync = useCallback(async () => {
+    if (flushing.current || isOffline()) return;
+    flushing.current = true;
+    try {
+      const r = await flushQueue(localStorage, async (rows) => {
+        const { error } = await supabase.from('items').upsert(rows, { onConflict: 'id', ignoreDuplicates: true, defaultToNull: false });
+        return error ? error.message : null;
+      });
+      setWaiting(loadQueue(localStorage).length);
+      if (r.sent) { flash(`Back online · ${r.sent} offline note${r.sent > 1 ? 's' : ''} synced`); load(); }
+      else if (r.error && !isNetworkError(r.error)) { flash(`Offline notes could not be saved: ${r.error}`); load(); }
+    } finally {
+      flushing.current = false;
+    }
+  }, [flash, load]);
+  useEffect(() => {
+    if (!session) return;
+    setItems((xs) => [...pendingItems().filter((p) => !xs.some((x) => x.id === p.id)), ...xs]);
+    sync();
+    const up = () => { setOnline(true); sync(); };
+    const down = () => setOnline(false);
+    const check = () => setWaiting(loadQueue(localStorage).length);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    window.addEventListener('focus', sync);
+    window.addEventListener('board-queued', check);
+    const t = window.setInterval(sync, 60_000);
+    return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
+      window.removeEventListener('focus', sync);
+      window.removeEventListener('board-queued', check);
+      window.clearInterval(t);
+    };
+  }, [session, sync]);
+
+  // A single new note built elsewhere (e.g. one date of a repeating note moved to its own time).
+  const insertItem = useCallback(
+    async (row: Partial<Item>) => {
+      const { data, error } = await supabase.from('items').insert(row).select(ITEM_COLS).single();
+      if (error) { flash(`Not saved: ${error.message}`); return false; }
+      const it = data as unknown as Item;
+      setItems((xs) => [it, ...xs.filter((x) => x.id !== it.id)]);
+      flash('Saved as its own note');
       return true;
     },
     [flash],
   );
 
-  const update = useCallback(
-    async (id: string, patch: Partial<Item>) => {
-      setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-      const { error } = await supabase.from('items').update(patch).eq('id', id);
-      if (error) { flash(error.message); load(); }
-    },
-    [flash, load],
-  );
-
   const remove = useCallback(
     async (id: string) => {
-      const path = items.find((x) => x.id === id)?.image_path;
+      const it = items.find((x) => x.id === id) ?? archived?.find((x) => x.id === id);
       setItems((xs) => xs.filter((x) => x.id !== id));
+      setArchived((a) => (a ? a.filter((x) => x.id !== id) : a));
+      setPrompts((ps) => ps.filter((p) => p.itemId !== id));
+      if (patchQueued(localStorage, id, null)) { window.dispatchEvent(new Event('board-queued')); return; }
       const { error } = await supabase.from('items').delete().eq('id', id);
       if (error) { flash(error.message); load(); return; }
-      if (path) removeImage(path).catch(() => {});
+      if (it?.image_path) removeImage(it.image_path).catch(() => {});
+      if (it?.file_path) removeFile(it.file_path).catch(() => {});
     },
-    [flash, load, items],
+    [flash, load, items, archived],
   );
 
-  // Images: shrink → upload → item row. OCR runs afterwards in the queue below.
+  // Attachments: upload → item row. Text is read afterwards in the queue below.
   const localBlobs = useRef(new Map<string, Blob>());
-  const addImage = useCallback(
-    async (file: Blob, caption = '', source = 'app', remind: number[] | null = null) => {
-      flash('Uploading image…');
+  const addFile = useCallback(
+    async (file: Blob, caption = '', source = 'app', picked: number[] | null = null) => {
+      const name = file instanceof File ? file.name : '';
+      const isPdf = file.type === 'application/pdf';
+      const isAudio = file.type.startsWith('audio/');
+      flash(isPdf ? 'Uploading PDF…' : isAudio ? 'Uploading audio…' : 'Uploading image…');
       try {
-        const blob = await shrink(file);
-        const path = await upload(blob);
-        localBlobs.current.set(path, blob);
-        const p = parseInput(caption);
-        const { data, error } = await supabase
-          .from('items')
-          .insert({ ...p, body: caption.trim() ? p.body : '', image_path: path, source, remind_offsets: p.due_at ? remind : null })
-          .select()
-          .single();
+        const { remind, duration, ...p } = parseInput(caption);
+        const row: Partial<Item> = { ...p, duration_min: duration, body: caption.trim() ? p.body : '', source, remind_offsets: p.due_at ? remind ?? picked : null };
+        if (isPdf || isAudio) {
+          const kind = isPdf ? { type: 'application/pdf', ext: 'pdf' } : audioKind(file.type);
+          row.file_path = await uploadFile(file, kind.ext, kind.type);
+          row.file_type = isPdf ? 'pdf' : 'audio';
+          row.file_name = name || (isPdf ? 'Document.pdf' : 'Audio');
+          if (isAudio && !row.body) row.body = name || 'Audio note'; // the words replace this once they're read
+          localBlobs.current.set(row.file_path, file);
+        } else {
+          const blob = await shrink(file);
+          row.image_path = await upload(blob);
+          localBlobs.current.set(row.image_path, blob);
+        }
+        const { data, error } = await supabase.from('items').insert(row).select(ITEM_COLS).single();
         if (error) throw error;
-        setItems((xs) => [data as Item, ...xs]);
-        flash('Image saved · reading text…');
+        setItems((xs) => [data as unknown as Item, ...xs]);
+        flash(isAudio ? 'Audio saved · getting the words…' : `${isPdf ? 'PDF' : 'Image'} saved · reading text…`);
         return true;
       } catch (e) {
-        flash(`Image not saved: ${(e as Error).message}`);
+        flash(`Not saved: ${(e as Error).message}`);
         return false;
       }
     },
     [flash],
   );
 
-  // OCR queue: any image without text yet gets read on this device, one at a time.
+  // What a voice note said → its text and tags; a day + time books it, a day alone is asked about.
+  // Returns the changes for the note and what to tell the user once they're saved.
+  const readVoice = useCallback(
+    (it: Pick<Item, 'body' | 'tags' | 'due_at' | 'file_name' | 'remind_offsets'>, transcript: string, caption = '') => {
+      const placeholder = isPlaceholderBody(it.body, it.file_name);
+      const typed = caption || (placeholder ? '' : it.body);
+      const v = planVoice(transcript, typed, it.remind_offsets?.length ? it.remind_offsets : null);
+      const patch: Partial<Item> = { ocr_text: transcript, tags: [...new Set([...it.tags, ...v.tags])] };
+      if (v.body && (placeholder || caption)) patch.body = v.body;
+      if (v.url) patch.url = v.url;
+      const booked = !it.due_at && v.booking ? v.booking : null;
+      const tagsUnbooked = patch.tags;
+      if (booked) Object.assign(patch, booked, { tags: [...new Set([...(patch.tags ?? []), ...(booked.kind === 'event' ? ['event'] : [])])] });
+      const after = (id: string) => {
+        if (booked) {
+          flash(`Booked 📅 ${whenLabel(booked.due_at)}`, {
+            label: 'Undo',
+            run: () => { update(id, { due_at: null, all_day: false, kind: null, repeat: null, duration_min: null, tags: tagsUnbooked }); flash('Taken off the calendar'); },
+          });
+        } else if (v.ask && !it.due_at) {
+          ask({ itemId: id, from: 'voice note', title: (patch.body ?? it.body).split('\n')[0].slice(0, 120), due_at: v.ask.due_at, all_day: v.ask.all_day, location: null, tags: patch.tags ?? it.tags, quote: v.ask.text });
+        } else if (transcript) flash(`Got the words: “${transcript.slice(0, 60)}${transcript.length > 60 ? '…' : ''}”`);
+        else flash('No words found in the recording');
+      };
+      return { patch, after };
+    },
+    [flash, update, ask],
+  );
+
+  // Voice note: the recording is kept, and what was said becomes the note text. Chrome and Edge hear the words
+  // while recording; everywhere else (the Android and Windows apps, other browsers) they're read afterwards on this device.
+  const addVoice = useCallback(
+    async (audio: Blob, transcript: string, caption: string, seconds: number, picked: number[] | null = null) => {
+      flash('Saving voice note…');
+      try {
+        const kind = audioKind(audio.type);
+        const path = await uploadFile(audio, kind.ext, kind.type);
+        const stamp = new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        const base = {
+          body: `Voice note · ${stamp}`, tags: [] as string[], due_at: null, remind_offsets: picked,
+          file_name: `Voice note ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`,
+        };
+        // No live words: save the caption (if typed) and let the text queue read the recording.
+        const heard = transcript ? readVoice(base, transcript, caption) : null;
+        const typed = !transcript && caption ? parseInput(caption) : null;
+        const row: Partial<Item> = {
+          ...base, source: 'app', file_path: path, file_type: 'audio', ocr_text: null,
+          ...(typed ? { body: caption, tags: typed.tags, url: typed.url } : {}),
+          ...(heard?.patch ?? {}),
+        };
+        if (!transcript) localBlobs.current.set(path, audio);
+        const { data, error } = await supabase.from('items').insert(row).select(ITEM_COLS).single();
+        if (error) throw error;
+        const it = data as unknown as Item;
+        setItems((xs) => [it, ...xs]);
+        if (heard) heard.after(it.id);
+        else flash('Voice note saved · getting the words…');
+        return true;
+      } catch (e) {
+        flash(`Voice note not saved: ${(e as Error).message}`);
+        return false;
+      }
+    },
+    [flash, readVoice],
+  );
+
+  // Text queue: any image or PDF without text yet gets read on this device, one at a time.
   const ocrBusy = useRef(false);
   const ocrFailed = useRef(new Set<string>());
   useEffect(() => {
     if (!session || ocrBusy.current) return;
-    const next = items.find((i) => i.image_path && i.ocr_text === null && !i.id.startsWith('tmp-') && !ocrFailed.current.has(i.id));
+    const next = items.find((i) => (i.image_path || i.file_type === 'pdf' || i.file_type === 'audio') && i.ocr_text === null && !i.id.startsWith('tmp-') && !ocrFailed.current.has(i.id));
     if (!next) return;
     ocrBusy.current = true;
     (async () => {
+      const path = (next.image_path ?? next.file_path)!;
       try {
-        const blob = localBlobs.current.get(next.image_path!) ?? (await download(next.image_path!));
+        const blob = localBlobs.current.get(path) ?? (next.image_path ? await download(path) : await downloadFile(path));
         if (!blob) throw new Error('download failed');
-        const text = await readText(blob);
-        localBlobs.current.delete(next.image_path!);
-        // A flyer, ticket or invite: if the image names a day and the note has no date yet, book it.
-        const ev = text && !next.due_at ? findEventDate(text) : null;
-        if (ev) {
-          const tags = next.tags.includes('event') ? next.tags : [...next.tags, 'event'];
-          await update(next.id, { ocr_text: text, ...ev, kind: 'event', tags, remind_offsets: null });
-          flash(`Added to calendar · ${new Date(ev.due_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', ...(ev.all_day ? {} : { hour: 'numeric', minute: '2-digit' }) })} · pick a reminder`);
-        } else {
-          await update(next.id, { ocr_text: text });
-          if (text) flash(`Read ${text.split(/\s+/).length} words from image`);
+        if (next.file_type === 'audio') {
+          let shown = -1;
+          const words = await transcribe(blob, (pct) => {
+            // First use only: the speech model downloads, then stays cached.
+            if (pct < 100 && pct - shown >= 10) { shown = pct; flash(`Getting the words · downloading speech model ${pct}% (first time only)`); }
+          });
+          localBlobs.current.delete(path);
+          const { patch, after } = readVoice(next, words);
+          await update(next.id, patch);
+          after(next.id);
+          return;
+        }
+        const text = next.image_path ? await readText(blob) : await pdfText(blob);
+        localBlobs.current.delete(path);
+        await update(next.id, { ocr_text: text });
+        if (text) flash(`Read ${text.split(/\s+/).length} words from the ${next.image_path ? 'image' : 'PDF'}`);
+        // A date in a screenshot or PDF is only a suggestion: ask before it goes on the calendar.
+        const found = text && !next.due_at ? findEventDate(text) : null;
+        if (found) {
+          const firstLine = text.split('\n').find((l) => l.trim().length > 3 && !l.includes(found.text))?.trim() ?? '';
+          ask({
+            itemId: next.id, from: next.image_path ? 'screenshot' : 'PDF',
+            title: (next.body.split('\n')[0] || firstLine || next.file_name || 'Event').slice(0, 120),
+            due_at: found.due_at, all_day: found.all_day, location: null, tags: next.tags, quote: found.text,
+          });
         }
       } catch (e) {
-        console.warn('ocr', e);
+        console.warn('read text', e);
         ocrFailed.current.add(next.id);
+        if (!next.image_path) update(next.id, { ocr_text: '' });
+        if (next.file_type === 'audio') flash(`Couldn't get the words from the recording: ${(e as Error).message}`);
       } finally {
         ocrBusy.current = false;
         setItems((xs) => [...xs]); // nudge the queue to look for the next one
       }
     })();
-  }, [session, items, update, flash]);
+  }, [session, items, update, flash, ask, readVoice]);
 
   // Android share sheet → manifest share_target opens ./?share=1&title=…&text=…&url=…
   useEffect(() => {
@@ -182,13 +494,32 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
     let off = () => {};
-    onShared((text) => add(text, 'share'), (img, caption) => addImage(img, caption, 'share')).then((f) => (off = f));
+    onShared(
+      (text) => add(text, 'share'),
+      (img, caption) => addFile(img, caption, 'share'),
+      (file, caption) => addFile(file, caption, 'share'),
+      (msg) => flash(msg),
+    ).then((f) => (off = f));
     return () => off();
-  }, [session, add, addImage]);
+  }, [session, add, addFile, flash]);
 
   useEffect(() => {
-    if (session) syncReminders(items);
+    if (!session) return;
+    syncReminders(items);
+    // Items still waiting to be sent from offline have no server row yet; leave them out of the server's list.
+    if (!isOffline()) syncPushSchedule(items.filter((i) => !loadQueue(localStorage).some((q) => q.id === i.id)));
   }, [session, items]);
+
+  // Android widget taps.
+  useEffect(() => {
+    if (!session) return;
+    let off = () => {};
+    onQuick((mode) => {
+      setView('board');
+      window.dispatchEvent(new CustomEvent('board-quick', { detail: mode }));
+    }).then((f) => (off = f));
+    return () => off();
+  }, [session]);
 
   useEffect(() => {
     registerHotkey(() => {
@@ -198,35 +529,100 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    history.replaceState(null, '', `${location.pathname}${location.search}${view === 'calendar' ? '#calendar' : ''}`);
+    history.replaceState(null, '', `${location.pathname}${location.search}${view === 'board' ? '' : `#${view}`}`);
   }, [view]);
+
+  // ---- tags ----
+  const renameTag = useCallback(async (from: string, to: string) => {
+    const { data, error } = await supabase.rpc('rename_tag', { p_old: from, p_new: to });
+    if (error) flash(error.message);
+    else flash(`#${from} → #${to} on ${data} ${data === 1 ? 'note' : 'notes'}`);
+    await Promise.all([load(), loadColors()]);
+  }, [flash, load, loadColors]);
+
+  const deleteTag = useCallback(async (name: string) => {
+    const { data, error } = await supabase.rpc('delete_tag', { p_name: name });
+    if (error) flash(error.message);
+    else flash(`Removed #${name} from ${data} ${data === 1 ? 'note' : 'notes'}`);
+    await Promise.all([load(), loadColors()]);
+  }, [flash, load, loadColors]);
+
+  const colorTag = useCallback(async (name: string, color: string | null) => {
+    setColors((c) => { const n = { ...c }; if (color) n[name] = color; else delete n[name]; return n; });
+    const { error } = await supabase.from('categories').upsert({ name, color }, { onConflict: 'user_id,name' });
+    if (error) { flash(error.message); loadColors(); }
+  }, [flash, loadColors]);
 
   if (!configured)
     return (
       <div className="auth">
-        <h1 className="brand">Board</h1>
+        <h1 className="brand">{APP_NAME}</h1>
         <p className="note">Not configured yet: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.</p>
       </div>
     );
+  if (LINK_TOKEN) return <SharedLink token={LINK_TOKEN} />;
   if (session === undefined) return <div className="auth muted">Loading…</div>;
   if (!session) return <Auth />;
+
+  const tab = (v: View, label: string) => (
+    <button className={view === v ? 'tab on' : 'tab'} onClick={() => setView(v)}>{label}</button>
+  );
 
   return (
     <div className="app">
       <header className="top">
-        <span className="brand">Board</span>
+        <span className="brand">{APP_NAME}</span>
         <nav>
-          <button className={view === 'board' ? 'tab on' : 'tab'} onClick={() => setView('board')}>Board</button>
-          <button className={view === 'calendar' ? 'tab on' : 'tab'} onClick={() => setView('calendar')}>Calendar</button>
+          {tab('board', 'Board')}
+          {tab('calendar', 'Calendar')}
+          {tab('archive', 'Archive')}
+          {tab('tags', 'Tags')}
+          {tab('shared', 'Shared')}
+          {tab('more', 'More')}
         </nav>
-        <button className="link small" onClick={() => supabase.auth.signOut()}>Sign out</button>
+        <button className="icon" title="Colour theme" aria-expanded={themeOpen} onClick={() => setThemeOpen((o) => !o)}>🎨</button>
+        {themeOpen && (
+          <div className="theme-pop" onClick={() => setThemeOpen(false)}>
+            <ThemeSwatches theme={theme} onTheme={setTheme} />
+          </div>
+        )}
       </header>
-      {view === 'board' ? (
-        <Board items={items} onAdd={add} onAddImage={addImage} onUpdate={update} onRemove={remove} />
-      ) : (
-        <Calendar items={items} onUpdate={update} onRemove={remove} />
+      {view === 'board' && (
+        <Board items={items} colors={colors} jump={jump} onAdd={add} onAddFile={addFile} onAddVoice={addVoice} onUpdate={update} onRemove={remove} onInsert={insertItem} onError={flash} />
       )}
-      {toast && <div className="toast">{toast}</div>}
+      {view === 'calendar' && <Calendar items={items} colors={colors} onUpdate={update} onRemove={remove} onInsert={insertItem} />}
+      {view === 'archive' && <Archive items={archived} colors={colors} onUpdate={update} onRemove={remove} />}
+      {view === 'tags' && (
+        <Tags items={items} colors={colors} onRename={renameTag} onDelete={deleteTag} onColor={colorTag}
+          onOpen={(t) => { setJump({ tag: t, n: Date.now() }); setView('board'); }} />
+      )}
+      {view === 'shared' && (
+        <Shared items={sharedItems} shares={shares} myEmail={session.user.email ?? ''} colors={colors} onUpdate={updateShared} onLeave={leaveShare} />
+      )}
+      {view === 'more' && <More theme={theme} onTheme={setTheme} email={session.user.email ?? ''} flash={flash} onImported={load} items={items} />}
+      {prompts[0] && (
+        <EventPrompt
+          key={prompts[0].itemId}
+          proposal={prompts[0]}
+          more={prompts.length - 1}
+          onConfirm={(id, patch) => { update(id, patch); setPrompts((ps) => ps.slice(1)); flash('Added to your calendar 📅'); }}
+          onSkip={() => setPrompts((ps) => ps.slice(1))}
+        />
+      )}
+      {(!online || waiting > 0) && (
+        <div className="offline-bar" role="status">
+          {!online ? 'Offline · new notes are kept on this device' : 'Sending notes saved offline…'}
+          {waiting > 0 && ` · ${waiting} waiting`}
+        </div>
+      )}
+      {toast && (
+        <div className="toast">
+          {toast.msg}
+          {toast.action && (
+            <button className="toast-action" onClick={() => { const a = toast.action!; setToast(null); a.run(); }}>{toast.action.label}</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

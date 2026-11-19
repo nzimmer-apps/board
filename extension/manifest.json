@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Board — quick capture",
-  "version": "0.2.0",
-  "description": "Send text, links and pages to your Board.",
+  "version": "0.3.0",
+  "description": "Send text, links, pages and events to your Board.",
   "action": {
     "default_popup": "popup.html",
     "default_title": "Add to Board"
@@ -14,7 +14,8 @@
     "contextMenus",
     "storage",
     "notifications",
-    "activeTab"
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://*.supabase.co/*",

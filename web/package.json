@@ -6,19 +6,22 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "build:extension": "esbuild src/parse.ts --bundle --format=iife --global-name=BoardParse --minify --target=chrome110 --outfile=../extension/parse.js",
-    "test": "node --experimental-strip-types --test src/parse.test.ts src/recur.test.ts"
+    "test": "node --experimental-strip-types --test src/parse.test.ts src/parse.repeat.test.ts src/repeat.test.ts src/checklist.test.ts src/snooze.test.ts src/parse.duration.test.ts src/repeat.skip.test.ts src/importer.test.ts src/offlineQueue.test.ts src/webpush.test.ts src/share.test.ts src/voice.test.ts src/repeat.nth.test.ts",
+    "build:ext": "esbuild src/parse.ts --bundle --format=iife --global-name=BoardParse --minify --target=chrome110 --outfile=../extension/parse.js"
   },
   "dependencies": {
     "@capacitor/android": "^7.6.10",
     "@capacitor/core": "^7.6.10",
     "@capacitor/local-notifications": "^7.0.7",
+    "@huggingface/transformers": "^4.3.2",
     "@supabase/supabase-js": "^2.45.0",
     "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-autostart": "^2.7.0",
     "@tauri-apps/plugin-global-shortcut": "^2.4.1",
     "@tauri-apps/plugin-notification": "^2.8.1",
     "@tauri-apps/plugin-opener": "^2.7.3",
     "chrono-node": "^2.7.0",
+    "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tesseract.js": "^5.1.1"

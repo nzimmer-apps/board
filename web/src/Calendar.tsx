@@ -1,18 +1,21 @@
 import { useMemo, useState } from 'react';
-import type { Item } from './supabase';
+import type { Item, TagColors } from './supabase';
 import Card from './Card';
-import { occurrences } from './recur';
+import { occurrences } from './repeat';
 
 interface Props {
   items: Item[];
+  colors: TagColors;
   onUpdate: (id: string, patch: Partial<Item>) => void;
   onRemove: (id: string) => void;
+  onInsert?: (row: Partial<Item>) => Promise<boolean>;
 }
 
 const key = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const time = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-export default function Calendar({ items, onUpdate, onRemove }: Props) {
+export default function Calendar({ items, colors, onUpdate, onRemove, onInsert }: Props) {
   const today = new Date();
   const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [picked, setPicked] = useState<Date>(today);
@@ -23,17 +26,19 @@ export default function Calendar({ items, onUpdate, onRemove }: Props) {
     return Array.from({ length: 42 }, (_, i) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + i));
   }, [month]);
 
-  // Each day's notes, with repeating notes placed on every date they fall on in the visible weeks.
+  // Every occurrence that falls in the visible six weeks (repeating items appear on each of their days).
   const byDay = useMemo(() => {
+    const from = cells[0];
+    const to = new Date(cells[41].getFullYear(), cells[41].getMonth(), cells[41].getDate() + 1);
     const m = new Map<string, { i: Item; at: Date }[]>();
-    const from = cells[0].getTime();
-    const to = new Date(cells[41].getFullYear(), cells[41].getMonth(), cells[41].getDate(), 23, 59).getTime();
-    items.forEach((i) => occurrences(i, from, to, 60).forEach((at) => {
-      const k = key(at);
-      m.set(k, [...(m.get(k) ?? []), { i, at }]);
-    }));
+    items.filter((i) => i.due_at).forEach((i) => {
+      for (const at of occurrences(new Date(i.due_at!), i.repeat, from, to, 60)) {
+        const k = key(at);
+        m.set(k, [...(m.get(k) ?? []), { i, at }]);
+      }
+    });
     m.forEach((list) => list.sort((a, b) => a.at.getTime() - b.at.getTime()));
-    return new Map([...m].map(([k, v]) => [k, v.map((x) => x.i)]));
+    return m;
   }, [items, cells]);
 
   const dayItems = byDay.get(key(picked)) ?? [];
@@ -60,8 +65,10 @@ export default function Calendar({ items, onUpdate, onRemove }: Props) {
           return (
             <button key={d.toISOString()} className={cls} onClick={() => setPicked(d)}>
               <span className="num">{d.getDate()}</span>
-              {list.slice(0, 3).map((i) => (
-                <span key={i.id} className={`pill ${i.kind ?? ''} ${i.done ? 'done' : ''}`}>{i.repeat ? '🔁 ' : ''}{i.body.split('\n')[0] || i.ocr_text?.split('\n')[0] || 'Image'}</span>
+              {list.slice(0, 3).map(({ i, at }) => (
+                <span key={`${i.id}@${at.getTime()}`} className={`pill ${i.kind ?? ''} ${i.done ? 'done' : ''}`}>
+                  {i.repeat ? '🔁 ' : ''}{i.body.split('\n')[0] || i.file_name || 'Attachment'}
+                </span>
               ))}
               {list.length > 3 && <span className="more">+{list.length - 3}</span>}
             </button>
@@ -74,7 +81,12 @@ export default function Calendar({ items, onUpdate, onRemove }: Props) {
           <p className="muted">Nothing scheduled.</p>
         ) : (
           <div className="grid">
-            {dayItems.map((i) => <Card key={i.id} item={i} onUpdate={onUpdate} onRemove={onRemove} />)}
+            {dayItems.map(({ i, at }) => (
+              <div key={`${i.id}@${at.getTime()}`}>
+                {i.repeat && !i.all_day && <div className="occ muted">{time(at)} on this day</div>}
+                <Card item={i} colors={colors} onUpdate={onUpdate} onRemove={onRemove} onInsert={onInsert} />
+              </div>
+            ))}
           </div>
         )}
       </section>
