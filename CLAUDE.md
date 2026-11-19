@@ -60,11 +60,15 @@ material. `.gitignore` covers `*.jks`, `*.keystore` and `*KEYSTORE*.txt`.
 On Windows PowerShell 5.1, don't pipe a value into `gh secret set` (it appends CRLF). Redirect a
 no-newline file through cmd instead: `cmd /c "gh secret set NAME -R nzimmer-apps/board < file"`.
 
-## What `dev` has that `main` doesn't yet (until the prod port)
+## How the bigger features work
+
+Everything here is on both branches (ported to the real Board in v0.2.13, 2026-11-19).
 
 - Repeating items: `items.repeat` (jsonb rule) + `web/src/repeat.ts`. `due_at` is the first occurrence; later ones are computed.
   The rule can also hold `nth` (2nd / last weekday of the month, from the live Board) and `until` (last day, "YYYY-MM-DD").
-  The live Board stored repeats as a text word + `repeat_until`; `20261119120000_repeat_rule.sql` converts that form.
+  The live Board once stored repeats as a text word + `repeat_until`; `20261119120000_repeat_rule.sql` converted that.
+  `repeat_until` still exists, empty and unused, only so apps v0.2.11 and older keep working
+  (`20261119200000_keep_repeat_until.sql`). Drop it in a new migration once those are gone, after asking the user.
 - Reminders are never assumed: `remind_offsets` null = not chosen yet, and the card asks; `[]` = none (from the live Board).
 - Parser (`web/src/parse.ts`): `parseAll` returns several items for "6 pm sundays, 7 pm monday and thursdays", and
   reads "notify 2 hours and 8 hours before" into notification times.
@@ -82,9 +86,9 @@ no-newline file through cmd instead: `cmd /c "gh secret set NAME -R nzimmer-apps
 - Sharing: `shares` table (one note or one tag, with a person by confirmed email or a read-only secret link).
   RLS on `items` / storage reads it through `share_access()`; people's own lists filter `user_id` so shared notes only
   show under the Shared tab. Links open through the `shared` edge function (deploy with verify_jwt off).
-- The first three migrations here were applied to the dev project through the Supabase dashboard API, so its
-  migration history uses different version numbers than the files. They are idempotent; `supabase db push` may ask
-  to re-apply them, which is safe.
+- Most migrations were applied to both projects through the Supabase API, so each project's migration history uses
+  different version numbers than the files. They are idempotent; `supabase db push` may ask to re-apply them, which
+  is safe. Check with `npx supabase migration list` first.
 - `web/.env.local` (git-ignored) holds a test account for the dev database, for local testing only.
 
 ## Rules
